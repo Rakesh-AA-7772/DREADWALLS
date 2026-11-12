@@ -11,7 +11,7 @@ A first playable version of a lightweight first-person psychological horror game
 
 ## Objective
 
-Explore the procedurally generated corridors of the Infinite Building and find the exit door. A faceless shadow may appear at spaced intervals and pursue the player. The game ends when health reaches zero or when the player chooses to leave through the exit.
+Choose Easy, Medium or Impossible before entering the Infinite Building. Easy is a short two-turn route with no monster; Medium is a larger maze with a manageable shadow and optional Echo clues; Impossible is a vast maze with three to five doors, one real exit, torch flicker and visual anomalies. The goal remains to reach the real exit, except Impossible is about surviving long enough to identify it.
 
 ## Controls
 
@@ -25,9 +25,11 @@ Explore the procedurally generated corridors of the Infinite Building and find t
 - Looking directly at the visible shadow drains 10 health per second.
 - Close contact can cause an additional hit.
 - Turn away and keep moving to make the shadow withdraw.
-- The first shadow encounter is scheduled 18 seconds into a run. Further encounters become progressively more frequent as the run continues, with no fixed encounter-count cap.
+- Easy has no monster encounters. Medium and Impossible share a gradual monster schedule, beginning after 32 seconds and becoming more frequent over time.
+- Easy uses a compact route with two turns. Medium uses a 27×27 generated maze. Impossible uses a 61×61 maze and places three to five apparent exits, only one of which is real.
+- Impossible adds a flickering torch and brief, non-damaging visual anomalies. These effects never reverse controls or block movement.
 - Reaching zero health ends the run immediately, then returns to the home screen.
-- Optional objective: collect three glowing echo marks placed along the maze. All three reveal a non-essential direction and approximate-distance hint to the exit; collecting them is not required to escape.
+- In Medium, three Echo clues are placed directly along the main route. They are optional; collecting all three reveals a non-essential exit direction and approximate-distance hint. Easy and Impossible do not require Echo clues.
 - Aim at the exit door and press E / click to open the exit choices.
 - `LEAVE THE HOUSE` records a successful run and displays the 12.4-second ending.
 - `SACRIFICE YOURSELF` is present but disabled for a future chapter.
@@ -38,6 +40,6 @@ The stopwatch starts when PLAY is selected and stops when the run ends. The Abou
 
 ## Audio autoplay
 
-The game references `into.mp3` on the dashboard, `game.mp3` during gameplay, `monster.mp3` when a shadow encounter begins, and looping `footsteps.mp3` only while the player is actually moving. The footstep playback rate follows movement speed and stops when movement stops. `floor.jpg` textures the floor and `moon.png` is shown when the player looks upward. Browsers may block audio autoplay until the first click/tap; starting a run provides the required user interaction.
+The game stops `into.mp3` immediately when a level is selected, stays silent during the 2.4-second loading screen, then starts `game.mp3` when gameplay begins. `monster.mp3` plays on encounters and `footsteps.mp3` plays only while the player moves. `floor.jpg` textures the floor and `moon.png` is shown when the player looks upward. Browsers may block audio autoplay until the first click/tap; selecting a level provides the required user interaction.
 
 The optional echo markers and monster proximity atmosphere are drawn in code and require no new files. See `ASSETS.txt` for the existing image/audio files; no additional assets are required for this upgrade.

@@ -12,6 +12,11 @@
   const deathScreen = $('deathScreen');
   const endingScreen = $('endingScreen');
   const playButton = $('playButton');
+  const levelSelect = $('levelSelect');
+  const loadingScreen = $('loadingScreen');
+  const loadingTitle = $('loadingTitle');
+  const fakeDoorToast = $('fakeDoorToast');
+  const objectiveStatus = $('objectiveStatus');
   const aboutButton = $('aboutButton');
   const closeAbout = $('closeAbout');
   const historyList = $('historyList');
@@ -30,9 +35,12 @@
   const exitTrace = $('exitTrace');
 
   const HISTORY_KEY = 'dreadwalls.runHistory.v1';
-  const MAP_SIZE = 51; // larger odd-sized maze; raycasting remains bounded by the 64-step guard
-  const MONSTER_INITIAL_DELAY_SECONDS = 18;
   const OPTIONAL_ECHO_COUNT = 3;
+  const DIFFICULTIES = {
+    easy:{id:'easy',label:'EASY',mapSize:15,monsters:false,monsterInitialDelay:Infinity,monsterBaseInterval:Infinity,monsterMinInterval:Infinity,monsterSpeed:0,stareDamage:0,closeDamage:0,echoClues:false,torchFlicker:false,anomalies:false,fakeExitCount:0,playerSpeed:3.1},
+    medium:{id:'medium',label:'MEDIUM',mapSize:27,monsters:true,monsterInitialDelay:32,monsterBaseInterval:27,monsterMinInterval:18,monsterSpeed:.78,stareDamage:6,closeDamage:10,echoClues:true,torchFlicker:false,anomalies:false,fakeExitCount:0,playerSpeed:2.8},
+    impossible:{id:'impossible',label:'IMPOSSIBLE',mapSize:61,monsters:true,monsterInitialDelay:32,monsterBaseInterval:27,monsterMinInterval:18,monsterSpeed:1,stareDamage:10,closeDamage:15,echoClues:false,torchFlicker:true,anomalies:true,fakeExitCount:2,playerSpeed:2.65}
+  };
   const MOUSE_LOOK_SENSITIVITY = 0.0050;
   const MOUSE_PITCH_SENSITIVITY = 0.0040;
   const FOV = Math.PI / 3;
@@ -41,7 +49,10 @@
   const player = { x: 1.5, y: 1.5, angle: 0, pitch: 0, speed: 2.65 };
 
   let map = [];
-  let exitDoor = { x: MAP_SIZE - 1.5, y: MAP_SIZE - 1.5 };
+  let exitDoor={x:49.5,y:49.5,fake:false};
+  let exitDoors=[exitDoor];
+  let targetedDoor=null;
+  let currentDifficulty=DIFFICULTIES.medium;
   let width = 0;
   let height = 0;
   let lastFrame = 0;
@@ -58,7 +69,10 @@
   let nextMonsterAt = MONSTER_INITIAL_DELAY_SECONDS;
   let encounterCount = 0;
   let echoes = [];
-  let echoesCollected = 0;
+  let echoesCollected=0;
+  let loadingTimer=null, fakeDoorTimer=null;
+  let anomalyUntil=0, nextAnomalyAt=48;
+  let torchFlickerTimer=2, torchFlickerPower=1;
   let doorAimed = false;
   let doorImageReady = false;
   let wallImageReady = false;
@@ -131,11 +145,7 @@
     while (angle < -Math.PI) angle += Math.PI * 2;
     return angle;
   }
-  function getMonsterInterval() {
-    // Encounters become progressively more frequent as the run and encounter count increase.
-    const pressure = encounterCount * 1.5 + Math.floor(elapsedSeconds / 75) * 1.25;
-    return Math.max(9, 18 - pressure);
-  }
+  function getMonsterInterval(){if(!currentDifficulty.monsters)return Infinity;const pressure=encounterCount*1.5+Math.floor(elapsedSeconds/90);return Math.max(currentDifficulty.monsterMinInterval,currentDifficulty.monsterBaseInterval-pressure);}
   function formatTime(seconds) {
     const safe = Math.max(0, Math.floor(seconds));
     const mins = Math.floor(safe / 60).toString().padStart(2, '0');
@@ -144,40 +154,11 @@
   }
 
   // Generate a classic maze with a guaranteed connected route to the far exit.
-  function placeEchoes() {
-    const candidates = [];
-    for (let y = 2; y < MAP_SIZE - 2; y++) {
-      for (let x = 2; x < MAP_SIZE - 2; x++) {
-        if (map[y][x] !== 0) continue;
-        const px = x + 0.5, py = y + 0.5;
-        if (Math.hypot(px - player.x, py - player.y) < 7) continue;
-        if (Math.hypot(px - exitDoor.x, py - exitDoor.y) < 5) continue;
-        candidates.push({ x: px, y: py, collected: false });
-      }
-    }
-    for (let i = candidates.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
-    }
-    echoes = [];
-    for (const candidate of candidates) {
-      if (echoes.every(echo => Math.hypot(echo.x - candidate.x, echo.y - candidate.y) >= 6)) {
-        echoes.push(candidate);
-        if (echoes.length === OPTIONAL_ECHO_COUNT) break;
-      }
-    }
-    if (echoes.length < OPTIONAL_ECHO_COUNT) {
-      for (const candidate of candidates) {
-        if (echoes.includes(candidate)) continue;
-        echoes.push(candidate);
-        if (echoes.length === OPTIONAL_ECHO_COUNT) break;
-      }
-    }
-    echoesCollected = 0;
-  }
-
-  function generateMaze() {
-    const size = MAP_SIZE;
+  function findMazePath(tx,ty){const key=(x,y)=>x+','+y,q=[[1,1]],prev=new Map([[key(1,1),null]]);for(let i=0;i<q.length;i++){const[x,y]=q[i];if(x===tx&&y===ty)break;for(const[dx,dy]of[[1,0],[-1,0],[0,1],[0,-1]]){const nx=x+dx,ny=y+dy,k=key(nx,ny);if(!map[ny]||map[ny][nx]!==0||prev.has(k))continue;prev.set(k,key(x,y));q.push([nx,ny]);}}let k=key(tx,ty);if(!prev.has(k))return [];const path=[];while(k){const p=k.split(',').map(Number);path.push({x:p[0]+.5,y:p[1]+.5});k=prev.get(k);}return path.reverse();}
+  function placeEchoes(){echoes=[];echoesCollected=0;if(!currentDifficulty.echoClues)return;const size=map.length,path=findMazePath(size-2,size-2);if(path.length<8)return;[.28,.58,.82].forEach(f=>{const p=path[Math.min(path.length-2,Math.max(2,Math.floor(path.length*f)))];echoes.push({x:p.x,y:p.y,collected:false});});}
+  function placeFakeExits(){exitDoors=[exitDoor];if(!currentDifficulty.fakeExitCount)return;const size=map.length,candidates=[];for(let y=2;y<size-2;y++)for(let x=2;x<size-2;x++){if(map[y][x]!==0)continue;const c={x:x+.5,y:y+.5,fake:true};if(Math.hypot(c.x-player.x,c.y-player.y)<15||Math.hypot(c.x-exitDoor.x,c.y-exitDoor.y)<9)continue;candidates.push(c);}for(let i=candidates.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[candidates[i],candidates[j]]=[candidates[j],candidates[i]];}const total=Math.floor(random(3,6)),chosen=[];for(const c of candidates){if(chosen.every(d=>Math.hypot(d.x-c.x,d.y-c.y)>=9)){chosen.push(c);if(chosen.length>=total-1)break;}}if(chosen.length<total-1)for(const c of candidates){if(chosen.includes(c))continue;chosen.push(c);if(chosen.length>=total-1)break;}exitDoors=exitDoors.concat(chosen);}
+  function generateEasyMaze(size){const m=Array.from({length:size},()=>Array(size).fill(1));for(let x=1;x<=size-2;x++)m[1][x]=0;for(let y=1;y<=size-2;y++)m[y][size-2]=0;for(let x=1;x<=size-2;x++)m[size-2][x]=0;return m;}
+  function generateMaze(){const size=currentDifficulty.mapSize;if(currentDifficulty.id==='easy')return generateEasyMaze(size);
     const next = Array.from({ length: size }, () => Array(size).fill(1));
     const stack = [[1, 1]];
     next[1][1] = 0;
@@ -206,10 +187,8 @@
     return next;
   }
 
-  function isWall(x, y) {
-    const mx = Math.floor(x), my = Math.floor(y);
-    return !map[my] || map[my][mx] !== 0;
-  }
+  function isWall(x,y){const mx=Math.floor(x),my=Math.floor(y);return !map[my]||map[my][mx]!==0;}
+  function isDoorBlocked(x,y){return exitDoors.some(d=>Math.hypot(x-d.x,y-d.y)<.52);}
 
   function movePlayer(dx, dy) {
     const radius = 0.18;
@@ -218,18 +197,18 @@
     if (!isWall(targetX + Math.sign(dx) * radius, player.y) &&
         !isWall(targetX + Math.sign(dx) * radius, player.y + radius) &&
         !isWall(targetX + Math.sign(dx) * radius, player.y - radius) &&
-        Math.hypot(targetX - exitDoor.x, player.y - exitDoor.y) > .52) {
+        !isDoorBlocked(targetX,player.y)) {
       player.x = targetX;
     }
     if (!isWall(player.x, targetY + Math.sign(dy) * radius) &&
         !isWall(player.x + radius, targetY + Math.sign(dy) * radius) &&
         !isWall(player.x - radius, targetY + Math.sign(dy) * radius) &&
-        Math.hypot(player.x - exitDoor.x, targetY - exitDoor.y) > .52) {
+        !isDoorBlocked(player.x,targetY)) {
       player.y = targetY;
     }
   }
 
-  function castRay(angle, maxDistance = 40) {
+  function castRay(angle, maxDistance = 72) {
     const rayX = Math.cos(angle), rayY = Math.sin(angle);
     let mapX = Math.floor(player.x), mapY = Math.floor(player.y);
     const deltaX = Math.abs(1 / (rayX || 1e-9));
@@ -242,7 +221,7 @@
     let distance = 0;
     let hit = false;
     let guard = 0;
-    while (!hit && guard++ < 64 && distance < maxDistance) {
+    while (!hit && guard++ < 96 && distance < maxDistance) {
       if (sideX < sideY) { sideX += deltaX; mapX += stepX; side = 0; }
       else { sideY += deltaY; mapY += stepY; side = 1; }
       distance = side === 0 ? sideX - deltaX : sideY - deltaY;
@@ -270,8 +249,8 @@
     return { dx, dy, distance, angle };
   }
 
-  function drawDoorSprite(zBuffer, strip, horizon) {
-    const view = getObjectView(exitDoor);
+  function drawDoorSprite(door,zBuffer,strip,horizon){
+    const view=getObjectView(door);
     if (view.distance > 18 || Math.abs(view.angle) > FOV * 0.85) return;
     const rayIndex = Math.floor((0.5 + Math.tan(view.angle) / (2 * Math.tan(FOV / 2))) * zBuffer.length);
     const wallDistance = zBuffer[Math.max(0, Math.min(zBuffer.length - 1, rayIndex))];
@@ -283,8 +262,8 @@
     const left = screenX - spriteWidth * 0.5;
     const brightness = Math.max(0.08, 1 - view.distance / 9);
     ctx.save();
-    ctx.globalAlpha = brightness;
-    if (doorImageReady) {
+    ctx.globalAlpha=brightness*(door.fake?.88:1);
+    if(doorImageReady){
       ctx.drawImage(doorTexture, left, top, spriteWidth, spriteHeight);
     } else {
       // Procedural fallback until the supplied door.png is added.
@@ -313,15 +292,15 @@
       const wallDistance = zBuffer[Math.max(0, Math.min(zBuffer.length - 1, rayIndex))];
       if (view.distance > wallDistance + 0.12) continue;
       const screenX = width * 0.5 + Math.tan(view.angle) / Math.tan(FOV / 2) * width * 0.5;
-      const size = Math.max(6, Math.min(25, height / Math.max(1, view.distance) * 0.055));
+      const size=Math.max(12,Math.min(34,height/Math.max(1,view.distance)*.09));
       const screenY = horizon + Math.min(height * 0.30, height / (view.distance + 1) * 0.13);
       const pulse = 0.62 + Math.sin(elapsedSeconds * 3.4 + echo.x) * 0.16;
       ctx.save();
       ctx.globalAlpha = pulse;
       ctx.shadowColor = 'rgba(178,78,68,.9)';
       ctx.shadowBlur = size * 1.3;
-      ctx.strokeStyle = '#c87568';
-      ctx.fillStyle = 'rgba(134,49,43,.30)';
+      ctx.strokeStyle='#f0a398';
+      ctx.fillStyle='rgba(184,68,58,.52)';
       ctx.lineWidth = Math.max(1, size * 0.09);
       ctx.beginPath();
       ctx.arc(screenX, screenY, size * 0.72, 0, Math.PI * 2);
@@ -348,6 +327,8 @@
     ctx.fillStyle = edge; ctx.fillRect(0, 0, width, height);
   }
 
+  function updateImpossibleEffects(dt){if(!currentDifficulty.anomalies){torchFlickerPower=1;anomalyUntil=0;return;}torchFlickerTimer-=dt;if(torchFlickerTimer<=0){if(torchFlickerPower>.72){torchFlickerPower=random(.2,.48);torchFlickerTimer=random(.07,.2);}else{torchFlickerPower=random(.82,1);torchFlickerTimer=random(2.4,5.2);}}if(elapsedSeconds>=nextAnomalyAt){anomalyUntil=elapsedSeconds+random(1.8,3.2);nextAnomalyAt=elapsedSeconds+random(38,58);}}
+  function drawImpossibleAnomaly(){if(!currentDifficulty.anomalies||elapsedSeconds>=anomalyUntil)return;const p=Math.max(0,anomalyUntil-elapsedSeconds),f=.45+Math.abs(Math.sin(elapsedSeconds*19))*.35,x=width*(.28+Math.sin(elapsedSeconds*2.7)*.18),h=Math.min(height*.82,height*(.48+f*.12)),w=h*.22;ctx.save();ctx.globalAlpha=Math.min(.52,p*.22)*f;ctx.fillStyle='#010102';ctx.shadowColor='rgba(160,35,42,.7)';ctx.shadowBlur=24;ctx.beginPath();ctx.ellipse(x,height*.5-h*.31,w*.24,h*.10,0,0,Math.PI*2);ctx.fill();ctx.beginPath();ctx.moveTo(x-w*.18,height*.5-h*.23);ctx.lineTo(x-w*.52,height*.5-h*.05);ctx.lineTo(x-w*.30,height*.5+h*.43);ctx.lineTo(x+w*.30,height*.5+h*.43);ctx.lineTo(x+w*.52,height*.5-h*.05);ctx.lineTo(x+w*.18,height*.5-h*.23);ctx.closePath();ctx.fill();ctx.globalAlpha=.08+f*.08;ctx.fillStyle='#d9c5c5';for(let i=0;i<4;i++){const y=(Math.abs(Math.sin(elapsedSeconds*11+i*7.3))*height)|0;ctx.fillRect(0,y,width,1+(i%2));}ctx.restore();}
   function drawMonsterShadow(zBuffer, strip, horizon) {
     if (!monster || !monster.active) return;
     const view = getObjectView(monster);
@@ -486,7 +467,8 @@
       const beamAngle = Math.abs(normalizeAngle(rayAngle - player.angle));
       const beam = Math.max(0, 1 - beamAngle / .76);
       const range = Math.max(0, 1 - distance / 5.8);
-      const illumination = Math.pow(beam, 1.65) * Math.pow(range, 1.2);
+      const tp=currentDifficulty.torchFlicker?torchFlickerPower:1;
+      const illumination=Math.pow(beam,1.65)*Math.pow(range,1.2)*tp;
       const sideShade = ray.side ? .66 : 1;
 
       if (wallImageReady && wallTexture.naturalWidth > 0) {
@@ -506,16 +488,15 @@
 
     // A low-power flashlight hotspot and broad darkness at the edges.
     const glow = ctx.createRadialGradient(width * .5, horizon + height * .1, 1, width * .5, horizon + height * .18, height * .58);
-    glow.addColorStop(0, 'rgba(180,210,230,.17)');
-    glow.addColorStop(.3, 'rgba(105,145,165,.065)');
+    const tp=currentDifficulty.torchFlicker?torchFlickerPower:1;
+    glow.addColorStop(0,'rgba(180,210,230,'+(.17*tp)+')');
+    glow.addColorStop(.3,'rgba(105,145,165,'+(.065*tp)+')');
     glow.addColorStop(1, 'rgba(0,0,0,0)');
     ctx.fillStyle = glow;
     ctx.fillRect(0, Math.max(0, horizon), width, height - Math.max(0, horizon));
 
-    drawDoorSprite(zBuffer, strip, horizon);
-    drawEchoSprites(zBuffer, horizon);
-    drawMonsterShadow(zBuffer, strip, horizon);
-    drawMonsterPresence();
+    for(const door of exitDoors)drawDoorSprite(door,zBuffer,strip,horizon);
+    drawEchoSprites(zBuffer,horizon);drawMonsterShadow(zBuffer,strip,horizon);drawMonsterPresence();drawImpossibleAnomaly();
 
     const vignette = ctx.createRadialGradient(width * .5, horizon, Math.min(width, height) * .05, width * .5, horizon, Math.max(width, height) * .76);
     vignette.addColorStop(0, 'rgba(0,0,0,.02)');
@@ -612,11 +593,8 @@
     if (open) renderHistory();
   }
 
-  function startGame() {
-    if (endingTimer) clearTimeout(endingTimer);
-    if (deathTimer) clearTimeout(deathTimer);
-    map = generateMaze();
-    player.x = 1.5; player.y = 1.5;
+  function startGame(levelKey){if(endingTimer)clearTimeout(endingTimer);if(deathTimer)clearTimeout(deathTimer);if(fakeDoorTimer)clearTimeout(fakeDoorTimer);currentDifficulty=DIFFICULTIES[levelKey]||DIFFICULTIES.medium;player.speed=currentDifficulty.playerSpeed;map=generateMaze();
+    player.x=1.5;player.y=1.5;const sz=map.length;exitDoor=currentDifficulty.id==='easy'?{x:1.5,y:sz-1.5,fake:false}:{x:sz-1.5,y:sz-1.5,fake:false};exitDoors=[exitDoor];targetedDoor=null;
     // Face the first carved corridor instead of sometimes spawning toward a wall.
     player.angle = map[1][2] === 0 ? 0 : Math.PI / 2;
     player.pitch = 0;
@@ -624,10 +602,7 @@
     elapsedSeconds = 0;
     startedAt = performance.now();
     runRecorded = false;
-    nextMonsterAt = MONSTER_INITIAL_DELAY_SECONDS;
-    encounterCount = 0;
-    monster = null;
-    placeEchoes();
+    nextMonsterAt=currentDifficulty.monsterInitialDelay;encounterCount=0;monster=null;placeEchoes();placeFakeExits();anomalyUntil=0;nextAnomalyAt=random(38,55);torchFlickerPower=1;torchFlickerTimer=random(1.8,3.2);
     isPlaying = true;
     isPaused = false;
     doorAimed = false;
@@ -638,7 +613,7 @@
     doorPrompt.classList.remove('visible');
     mobileInteract.classList.remove('visible');
     $('gameHint').style.display = mobile ? 'none' : '';
-    showAbout(false);
+    showAbout(false);levelSelect.classList.remove('visible');loadingScreen.classList.remove('visible');fakeDoorToast.classList.remove('visible');
     setScreen('game');
     stopFootsteps();
     startAudio(gameMusic);
@@ -658,20 +633,11 @@
     startAudio(introMusic);
   }
 
-  function updateHUD() {
-    $('healthValue').textContent = String(Math.ceil(health));
-    $('healthFill').style.width = `${Math.max(0, health)}%`;
-    $('stopwatch').textContent = formatTime(elapsedSeconds);
-    objectiveLabel.textContent = echoesCollected >= OPTIONAL_ECHO_COUNT ? 'ECHO TRACE COMPLETE' : 'OPTIONAL · FIND 3 ECHOES';
-    echoCountLabel.textContent = `${echoesCollected} / ${OPTIONAL_ECHO_COUNT}`;
-    const traceReady = echoesCollected >= OPTIONAL_ECHO_COUNT;
-    exitTrace.hidden = !traceReady;
-    if (traceReady) {
-      const bearing = normalizeAngle(Math.atan2(exitDoor.y - player.y, exitDoor.x - player.x) - player.angle);
-      const direction = Math.abs(bearing) < 0.38 ? 'AHEAD' : Math.abs(bearing) > 2.76 ? 'BEHIND' : (bearing < 0 ? 'LEFT' : 'RIGHT');
-      const distance = Math.round(Math.hypot(exitDoor.x - player.x, exitDoor.y - player.y));
-      exitTrace.textContent = `EXIT TRACE · ${direction} · ABOUT ${distance}M`;
-    }
+  function updateHUD(){
+    $('healthValue').textContent=String(Math.ceil(health));$('healthFill').style.width=Math.max(0,health)+'%';$('stopwatch').textContent=formatTime(elapsedSeconds);
+    if(currentDifficulty.id==='impossible'){objectiveStatus.hidden=false;objectiveLabel.textContent='JUST LIVE';echoCountLabel.hidden=true;exitTrace.hidden=true;}
+    else if(echoes.length){objectiveStatus.hidden=false;objectiveLabel.textContent='OPTIONAL · FIND 3 ECHOES';echoCountLabel.hidden=false;echoCountLabel.textContent=echoesCollected+' / '+OPTIONAL_ECHO_COUNT;const ready=echoesCollected>=OPTIONAL_ECHO_COUNT;exitTrace.hidden=!ready;if(ready){const b=normalizeAngle(Math.atan2(exitDoor.y-player.y,exitDoor.x-player.x)-player.angle),d=Math.abs(b)<.38?'AHEAD':Math.abs(b)>2.76?'BEHIND':(b<0?'LEFT':'RIGHT'),dist=Math.round(Math.hypot(exitDoor.x-player.x,exitDoor.y-player.y));exitTrace.textContent='EXIT TRACE · '+d+' · ABOUT '+dist+'M';}}
+    else{objectiveStatus.hidden=true;exitTrace.hidden=true;}
   }
 
   function collectEchoes() {
@@ -715,21 +681,21 @@
     const view = getObjectView(monster);
     const visible = view.distance < 10 && Math.abs(view.angle) < .17 && lineOfSight(monster.x, monster.y);
     if (visible) {
-      health = Math.max(0, health - 10 * dt); // one second of direct staring costs ten health
+      health=Math.max(0,health-currentDifficulty.stareDamage*dt);
     }
 
     const dx = player.x - monster.x;
     const dy = player.y - monster.y;
     const distance = Math.max(.001, Math.hypot(dx, dy));
     const escalation = Math.min(0.12, Math.max(0, encounterCount - 1) * 0.015);
-    const speed = visible ? 0.38 + escalation * 0.35 : (monster.elapsed < 3.5 ? 0.48 : 0.82 + escalation);
+    const speed=(visible?.38+escalation*.35:(monster.elapsed<3.5?.48:.82+escalation))*currentDifficulty.monsterSpeed;
     const mx = (dx / distance) * speed * dt;
     const my = (dy / distance) * speed * dt;
     if (!isWall(monster.x + mx, monster.y)) monster.x += mx;
     if (!isWall(monster.x, monster.y + my)) monster.y += my;
 
     if (distance < .85 && !monster.closeHit) {
-      health = Math.max(0, health - 15);
+      health=Math.max(0,health-currentDifficulty.closeDamage);
       monster.closeHit = true;
     }
 
@@ -745,13 +711,7 @@
     if (health <= 0) endRunByDeath();
   }
 
-  function updateDoorAim() {
-    const view = getObjectView(exitDoor);
-    const ray = castRay(player.angle);
-    doorAimed = view.distance < 2.65 && Math.abs(view.angle) < .12 && ray.distance >= view.distance - .35;
-    doorPrompt.classList.toggle('visible', doorAimed && !mobile);
-    mobileInteract.classList.toggle('visible', doorAimed && mobile);
-  }
+  function updateDoorAim(){const ray=castRay(player.angle);targetedDoor=null;let near=Infinity;for(const door of exitDoors){const v=getObjectView(door);if(v.distance<2.65&&Math.abs(v.angle)<.14&&ray.distance>=v.distance-.35&&v.distance<near){near=v.distance;targetedDoor=door;}}doorAimed=!!targetedDoor;if(doorAimed)doorPrompt.textContent=targetedDoor.fake?'UNKNOWN EXIT — CLICK OR PRESS E':'EXIT FOUND — CLICK OR PRESS E';doorPrompt.classList.toggle('visible',doorAimed&&!mobile);mobileInteract.textContent=doorAimed&&targetedDoor.fake?'CHECK DOOR':'INTERACT';mobileInteract.classList.toggle('visible',doorAimed&&mobile);}
 
   function updateGame(dt) {
     if (!isPlaying) return;
@@ -784,15 +744,15 @@
     syncFootsteps(actualDistance > 0.0005, dt > 0 ? actualDistance / dt : 0);
     collectEchoes();
 
-    if (!monster && elapsedSeconds >= nextMonsterAt) spawnMonster();
-    updateMonster(dt, forward, strafe);
+    if(currentDifficulty.monsters&&!monster&&elapsedSeconds>=nextMonsterAt)spawnMonster();updateMonster(dt,forward,strafe);updateImpossibleEffects(dt);
     if (!isPlaying) return;
     updateDoorAim();
     updateHUD();
   }
 
+  function interactWithDoor(){if(!isPlaying||!doorAimed||!targetedDoor)return;if(!targetedDoor.fake){openExitOptions();return;}stopFootsteps();isPaused=true;fakeDoorToast.classList.add('visible');if(currentDifficulty.anomalies)anomalyUntil=elapsedSeconds+2.2;if(fakeDoorTimer)clearTimeout(fakeDoorTimer);fakeDoorTimer=setTimeout(()=>{fakeDoorToast.classList.remove('visible');if(!isPlaying)return;isPaused=false;setScreen('game');if(!mobile&&canvas.requestPointerLock){try{canvas.requestPointerLock();}catch(_){}}},1750);}
   function openExitOptions() {
-    if (!isPlaying || !doorAimed) return;
+    if (!isPlaying || !doorAimed || !targetedDoor || targetedDoor.fake) return;
     stopFootsteps();
     isPaused = true;
     setScreen('exitOptions');
@@ -861,7 +821,7 @@
     keys[event.code] = true;
     if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(event.code)) event.preventDefault();
     if (event.code === 'KeyE' || event.code === 'Enter') {
-      if (doorAimed) openExitOptions();
+      if (doorAimed) interactWithDoor();
     }
     if (event.code === 'Escape' && isPlaying && !isPaused && !exitModal.classList.contains('visible')) {
       pauseGame();
@@ -872,7 +832,7 @@
 
   canvas.addEventListener('click', () => {
     if (!isPlaying || isPaused) return;
-    if (doorAimed) { openExitOptions(); return; }
+    if (doorAimed) { interactWithDoor(); return; }
     if (!mobile && !pointerLocked && canvas.requestPointerLock) {
       try { canvas.requestPointerLock(); } catch (_) {}
     }
@@ -939,10 +899,17 @@
   function releaseLook(event) { if (event.pointerId === lookPointer) lookPointer = null; }
   lookZone.addEventListener('pointerup', releaseLook);
   lookZone.addEventListener('pointercancel', releaseLook);
-  mobileInteract.addEventListener('click', openExitOptions);
+  mobileInteract.addEventListener('click', interactWithDoor);
 
-  // Dashboard buttons.
-  playButton.addEventListener('click', startGame);
+  // Dashboard buttons and difficulty transition.
+  function openLevelSelect(){stopAllAudio();levelSelect.classList.add('visible');levelSelect.setAttribute('aria-hidden','false');}
+  function closeLevelSelect(){levelSelect.classList.remove('visible');levelSelect.setAttribute('aria-hidden','true');startAudio(introMusic);}
+  function chooseLevel(key){if(!DIFFICULTIES[key])return;stopAllAudio();levelSelect.classList.remove('visible');levelSelect.setAttribute('aria-hidden','true');loadingTitle.textContent='ENTERING: '+DIFFICULTIES[key].label;loadingScreen.classList.add('visible');loadingScreen.setAttribute('aria-hidden','false');if(loadingTimer)clearTimeout(loadingTimer);loadingTimer=setTimeout(()=>{loadingScreen.classList.remove('visible');loadingScreen.setAttribute('aria-hidden','true');startGame(key);},2400);}
+  playButton.addEventListener('click',openLevelSelect);
+  $('easyLevelButton').addEventListener('click',()=>chooseLevel('easy'));
+  $('mediumLevelButton').addEventListener('click',()=>chooseLevel('medium'));
+  $('impossibleLevelButton').addEventListener('click',()=>chooseLevel('impossible'));
+  $('backToMenuButton').addEventListener('click',closeLevelSelect);
   aboutButton.addEventListener('click', () => { showAbout(true); startAudio(introMusic); });
   closeAbout.addEventListener('click', () => showAbout(false));
   clearHistoryButton.addEventListener('click', () => {
@@ -965,8 +932,6 @@
 
   // Attempt intro music on page load. Browsers may block autoplay until the first user gesture.
   startAudio(introMusic);
-  document.addEventListener('pointerdown', () => {
-    if (screen === 'home' || screen === 'about') startAudio(introMusic);
-  }, { once: true });
+  document.addEventListener('pointerdown',()=>{if((screen==='home'||screen==='about')&&!levelSelect.classList.contains('visible')&&!loadingScreen.classList.contains('visible'))startAudio(introMusic);},{once:true});
   renderHistory();
 })();

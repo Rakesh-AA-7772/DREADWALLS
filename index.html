@@ -46,7 +46,7 @@
         </div>
         <div class="about-copy">
           <p class="about-lead">There is no outside on the map. Only another corridor.</p>
-          <p>You wake inside a building that seems to have no end. Find the exit and keep your distance from the faceless shadow. Directly staring at it drains 10 health each second. Look away and keep moving until it disappears. Optional: collect three echo marks to reveal a helpful exit bearing.</p>
+          <p>Choose your descent: Easy is a short route with no monster, Medium is a larger maze with a manageable shadow and optional Echo clues, and Impossible hides one real exit among several doors while the building glitches around you.</p>
           <div class="controls-grid">
             <div><b>MOVE</b><span>W A S D</span></div>
             <div><b>LOOK</b><span>MOUSE / TOUCH</span></div>
@@ -64,6 +64,16 @@
       </section>
     </section>
 
+    <section id="levelSelect" class="level-select-overlay" aria-hidden="true"><div class="level-select-panel">
+      <div class="eyebrow">DREADWALLS / SELECT YOUR DESCENT</div><h1>CHOOSE YOUR <span>DIFFICULTY.</span></h1>
+      <p class="level-intro">Every level leads to an exit. The building decides what happens on the way.</p>
+      <div class="level-options">
+        <button id="easyLevelButton" class="level-option easy-option"><span class="level-index">01 / FIRST STEPS</span><strong>EASY</strong><span class="level-tagline">A short route. No monster.</span><span class="level-description">A small, clear maze with two turns. Learn to move, look around and find the door.</span><span class="level-choose">BEGIN <i>↗</i></span></button>
+        <button id="mediumLevelButton" class="level-option medium-option"><span class="level-index">02 / THE BUILDING</span><strong>MEDIUM</strong><span class="level-tagline">A longer maze. The shadow returns.</span><span class="level-description">A larger maze, manageable pursuit and optional Echo clues along the main route.</span><span class="level-choose">ENTER <i>↗</i></span></button>
+        <button id="impossibleLevelButton" class="level-option impossible-option"><span class="level-index">03 / NO WAY OUT</span><strong>IMPOSSIBLE</strong><span class="level-tagline">JUST LIVE.</span><span class="level-description">A vast maze, three to five doors, false exits, flickering torchlight and unexplained entities.</span><span class="level-choose">DESCEND <i>↗</i></span></button>
+      </div><button id="backToMenuButton" class="level-back">← BACK TO MENU</button></div></section>
+    <section id="loadingScreen" class="loading-screen" aria-hidden="true"><div class="loading-content"><div class="eyebrow">DREADWALLS / ACCESSING SECTOR</div><h2 id="loadingTitle">ENTERING THE BUILDING</h2><div class="loading-track"><span></span></div><p>THE BUILDING IS REARRANGING ITSELF.</p></div></section>
+    <div id="fakeDoorToast" class="fake-door-toast" role="status" aria-live="polite">THERE IS NOTHING BEHIND THIS DOOR.</div>
     <!-- GAME VIEW -->
     <section id="gameScreen" class="game-screen screen" aria-label="DREADWALLS gameplay">
       <canvas id="game" aria-label="First-person game view"></canvas>
