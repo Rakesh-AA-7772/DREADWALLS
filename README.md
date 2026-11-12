@@ -25,7 +25,7 @@ Explore the procedurally generated corridors of the Infinite Building and find t
 - Looking directly at the visible shadow drains 10 health per second.
 - Close contact can cause an additional hit.
 - Turn away and keep moving to make the shadow withdraw.
-- Encounters are spaced out with randomized intervals and capped per run; the shadow does not appear continuously.
+- The first shadow encounter is scheduled 23 seconds into a run; later appearances are scheduled 23 seconds after the previous shadow withdraws, with a maximum of four encounters per run.
 - Reaching zero health ends the run immediately, then returns to the home screen.
 - Aim at the exit door and press E / click to open the exit choices.
 - `LEAVE THE HOUSE` records a successful run and displays the 12.4-second ending.

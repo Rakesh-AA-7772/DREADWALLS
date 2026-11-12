@@ -26,7 +26,10 @@
   const doorPrompt = $('doorPrompt');
 
   const HISTORY_KEY = 'dreadwalls.runHistory.v1';
-  const MAP_SIZE = 19; // odd-sized perfect maze: light CPU cost, long exploration route
+  const MAP_SIZE = 51; // larger odd-sized maze; raycasting remains bounded by the 64-step guard
+  const MONSTER_INTERVAL_SECONDS = 23;
+  const MOUSE_LOOK_SENSITIVITY = 0.0034;
+  const MOUSE_PITCH_SENSITIVITY = 0.0030;
   const FOV = Math.PI / 3;
   const keys = Object.create(null);
   const touchMove = { x: 0, y: 0 };
@@ -47,7 +50,7 @@
   let runRecorded = false;
   let health = 100;
   let monster = null;
-  let nextMonsterAt = 48;
+  let nextMonsterAt = MONSTER_INTERVAL_SECONDS;
   let encounterCount = 0;
   let doorAimed = false;
   let doorImageReady = false;
@@ -422,7 +425,7 @@
     elapsedSeconds = 0;
     startedAt = performance.now();
     runRecorded = false;
-    nextMonsterAt = random(42, 68);
+    nextMonsterAt = MONSTER_INTERVAL_SECONDS;
     encounterCount = 0;
     monster = null;
     isPlaying = true;
@@ -474,7 +477,7 @@
       if (position) break;
     }
     if (!position) {
-      nextMonsterAt = elapsedSeconds + random(18, 30);
+      nextMonsterAt = elapsedSeconds + MONSTER_INTERVAL_SECONDS;
       return;
     }
     monster = { x: position.x, y: position.y, active: true, elapsed: 0, escapeTime: 0, closeHit: false };
@@ -512,7 +515,7 @@
 
     if (monster.escapeTime > 4.2 || monster.elapsed > 18 || distance < .5) {
       monster = null;
-      nextMonsterAt = elapsedSeconds + random(58, 92);
+      nextMonsterAt = elapsedSeconds + MONSTER_INTERVAL_SECONDS;
     }
     if (health <= 0) endRunByDeath();
   }
@@ -649,8 +652,8 @@
   });
   document.addEventListener('mousemove', event => {
     if (!pointerLocked || !isPlaying || isPaused) return;
-    player.angle += event.movementX * .0025;
-    player.pitch = Math.max(-.72, Math.min(.72, player.pitch - event.movementY * .0022));
+    player.angle += event.movementX * MOUSE_LOOK_SENSITIVITY;
+    player.pitch = Math.max(-.72, Math.min(.72, player.pitch - event.movementY * MOUSE_PITCH_SENSITIVITY));
   });
 
   // Mobile movement joystick.
