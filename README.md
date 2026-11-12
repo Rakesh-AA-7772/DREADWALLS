@@ -25,7 +25,7 @@ Explore the procedurally generated corridors of the Infinite Building and find t
 - Looking directly at the visible shadow drains 10 health per second.
 - Close contact can cause an additional hit.
 - Turn away and keep moving to make the shadow withdraw.
-- The first shadow encounter is scheduled 23 seconds into a run; later appearances are scheduled 23 seconds after the previous shadow withdraws, with a maximum of four encounters per run.
+- The first shadow encounter is scheduled 18 seconds into a run. Further encounters become progressively more frequent as the run continues, with no fixed encounter-count cap.
 - Reaching zero health ends the run immediately, then returns to the home screen.
 - Aim at the exit door and press E / click to open the exit choices.
 - `LEAVE THE HOUSE` records a successful run and displays the 12.4-second ending.
@@ -37,6 +37,6 @@ The stopwatch starts when PLAY is selected and stops when the run ends. The Abou
 
 ## Audio autoplay
 
-The game references `into.mp3` on the dashboard, `game.mp3` during gameplay, and `monster.mp3` when a shadow encounter begins. Browsers may block audio autoplay until the first click/tap; the first user interaction retries playback.
+The game references `into.mp3` on the dashboard, `game.mp3` during gameplay, `monster.mp3` when a shadow encounter begins, and looping `footsteps.mp3` only while the player is actually moving. The footstep playback rate follows movement speed and stops when movement stops. `floor.jpg` textures the floor and `moon.png` is shown when the player looks upward. Browsers may block audio autoplay until the first click/tap; starting a run provides the required user interaction.
 
 See `ASSETS.txt` for optional image/audio filenames. If an image is not present, a procedural fallback is drawn so the game remains playable.

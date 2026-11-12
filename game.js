@@ -19,6 +19,7 @@
   const introMusic = $('introMusic');
   const gameMusic = $('gameMusic');
   const monsterSound = $('monsterSound');
+  const footstepsAudio = $('footstepsAudio');
   const joystick = $('joystick');
   const stick = $('stick');
   const lookZone = $('lookZone');
@@ -27,9 +28,9 @@
 
   const HISTORY_KEY = 'dreadwalls.runHistory.v1';
   const MAP_SIZE = 51; // larger odd-sized maze; raycasting remains bounded by the 64-step guard
-  const MONSTER_INTERVAL_SECONDS = 23;
-  const MOUSE_LOOK_SENSITIVITY = 0.0034;
-  const MOUSE_PITCH_SENSITIVITY = 0.0030;
+  const MONSTER_INITIAL_DELAY_SECONDS = 18;
+  const MOUSE_LOOK_SENSITIVITY = 0.0050;
+  const MOUSE_PITCH_SENSITIVITY = 0.0040;
   const FOV = Math.PI / 3;
   const keys = Object.create(null);
   const touchMove = { x: 0, y: 0 };
@@ -50,11 +51,19 @@
   let runRecorded = false;
   let health = 100;
   let monster = null;
-  let nextMonsterAt = MONSTER_INTERVAL_SECONDS;
+  let nextMonsterAt = MONSTER_INITIAL_DELAY_SECONDS;
   let encounterCount = 0;
   let doorAimed = false;
   let doorImageReady = false;
   let wallImageReady = false;
+  let floorImageReady = false;
+  let moonImageReady = false;
+  let floorTexturePixels = null;
+  let floorTextureWidth = 0;
+  let floorTextureHeight = 0;
+  const floorBuffer = document.createElement('canvas');
+  const floorBufferCtx = floorBuffer.getContext('2d', { alpha: true });
+  let floorBufferImage = null;
   let lookPointer = null;
   let lastLookX = 0;
   let lastLookY = 0;
@@ -72,6 +81,25 @@
   doorTexture.onload = () => { doorImageReady = true; };
   doorTexture.onerror = () => { doorImageReady = false; };
   doorTexture.src = 'door.png';
+  const floorTexture = new Image();
+  floorTexture.onload = () => {
+    const textureCanvas = document.createElement('canvas');
+    textureCanvas.width = floorTexture.naturalWidth;
+    textureCanvas.height = floorTexture.naturalHeight;
+    const textureContext = textureCanvas.getContext('2d', { willReadFrequently: true });
+    textureContext.drawImage(floorTexture, 0, 0);
+    const textureImage = textureContext.getImageData(0, 0, textureCanvas.width, textureCanvas.height);
+    floorTexturePixels = textureImage.data;
+    floorTextureWidth = textureCanvas.width;
+    floorTextureHeight = textureCanvas.height;
+    floorImageReady = floorTextureWidth > 0 && floorTextureHeight > 0;
+  };
+  floorTexture.onerror = () => { floorImageReady = false; };
+  floorTexture.src = 'floor.jpg';
+  const moonTexture = new Image();
+  moonTexture.onload = () => { moonImageReady = true; };
+  moonTexture.onerror = () => { moonImageReady = false; };
+  moonTexture.src = 'moon.png';
 
   function resize() {
     const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
@@ -80,6 +108,9 @@
     canvas.width = Math.floor(width * dpr);
     canvas.height = Math.floor(height * dpr);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    floorBuffer.width = Math.max(1, Math.ceil(width / 3));
+    floorBuffer.height = Math.max(1, Math.ceil(height / 3));
+    floorBufferImage = floorBufferCtx.createImageData(floorBuffer.width, floorBuffer.height);
   }
   window.addEventListener('resize', () => {
     mobile = window.matchMedia('(pointer: coarse), (max-width: 760px)').matches;
@@ -92,6 +123,11 @@
     while (angle > Math.PI) angle -= Math.PI * 2;
     while (angle < -Math.PI) angle += Math.PI * 2;
     return angle;
+  }
+  function getMonsterInterval() {
+    // Encounters become progressively more frequent as the run and encounter count increase.
+    const pressure = encounterCount * 2 + Math.floor(elapsedSeconds / 45) * 1.5;
+    return Math.max(4, 18 - pressure);
   }
   function formatTime(seconds) {
     const safe = Math.max(0, Math.floor(seconds));
@@ -270,6 +306,69 @@
     ctx.restore();
   }
 
+  function drawMoon(horizon) {
+    if (!moonImageReady || player.pitch < 0.08 || horizon <= 0) return;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, 0, width, Math.min(height, horizon));
+    ctx.clip();
+    const moonSize = Math.min(190, Math.max(72, Math.min(width, height) * 0.18));
+    const aspect = moonTexture.naturalWidth / Math.max(1, moonTexture.naturalHeight);
+    const moonWidth = moonSize * aspect;
+    const moonHeight = moonSize;
+    const moonX = width * 0.72;
+    const moonY = height * (0.22 + Math.min(player.pitch, 0.72) * 0.20);
+    const glow = ctx.createRadialGradient(moonX, moonY, moonSize * 0.12, moonX, moonY, moonSize * 1.35);
+    glow.addColorStop(0, 'rgba(215,225,238,.18)');
+    glow.addColorStop(1, 'rgba(215,225,238,0)');
+    ctx.fillStyle = glow;
+    ctx.fillRect(moonX - moonSize * 1.4, moonY - moonSize * 1.4, moonSize * 2.8, moonSize * 2.8);
+    ctx.globalAlpha = 0.96;
+    ctx.drawImage(moonTexture, moonX - moonWidth * 0.5, moonY - moonHeight * 0.5, moonWidth, moonHeight);
+    ctx.restore();
+  }
+
+  function drawTexturedFloor(horizon) {
+    if (!floorImageReady || !floorTexturePixels || !floorBufferImage) return;
+    const pixels = floorBufferImage.data;
+    pixels.fill(0); // Transparent above the horizon so the ceiling and moon remain visible.
+    const bufferWidth = floorBuffer.width;
+    const bufferHeight = floorBuffer.height;
+    const cosine = Math.cos(player.angle);
+    const sine = Math.sin(player.angle);
+    const cameraPlane = Math.tan(FOV / 2);
+    const verticalScale = 2 * cameraPlane * height / width;
+    for (let py = 0; py < bufferHeight; py++) {
+      const screenY = (py + 0.5) * height / bufferHeight;
+      if (screenY <= horizon) continue;
+      const rowOffset = ((screenY - horizon) / height) * verticalScale;
+      const rowDistance = 0.5 / Math.max(0.0005, rowOffset);
+      const rowIndex = py * bufferWidth;
+      for (let px = 0; px < bufferWidth; px++) {
+        const cameraX = ((px + 0.5) * width / bufferWidth / width) * 2 - 1;
+        const rayX = cosine - sine * cameraPlane * cameraX;
+        const rayY = sine + cosine * cameraPlane * cameraX;
+        const worldX = player.x + rowDistance * rayX;
+        const worldY = player.y + rowDistance * rayY;
+        const tx = Math.min(floorTextureWidth - 1, Math.floor((worldX - Math.floor(worldX)) * floorTextureWidth));
+        const ty = Math.min(floorTextureHeight - 1, Math.floor((worldY - Math.floor(worldY)) * floorTextureHeight));
+        const source = (ty * floorTextureWidth + tx) * 4;
+        const target = (rowIndex + px) * 4;
+        const beam = Math.max(0, 1 - Math.abs(cameraX) * 0.95);
+        const brightness = Math.min(1, 0.28 + 0.72 * beam * Math.exp(-rowDistance * 0.11));
+        pixels[target] = floorTexturePixels[source] * brightness;
+        pixels[target + 1] = floorTexturePixels[source + 1] * brightness;
+        pixels[target + 2] = floorTexturePixels[source + 2] * brightness;
+        pixels[target + 3] = 255;
+      }
+    }
+    floorBufferCtx.putImageData(floorBufferImage, 0, 0);
+    ctx.save();
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(floorBuffer, 0, 0, width, height);
+    ctx.restore();
+  }
+
   function renderWorld() {
     const horizon = height * 0.5 + player.pitch * height * 0.46;
     ctx.fillStyle = '#020304';
@@ -279,11 +378,13 @@
     ceiling.addColorStop(1, '#090d10');
     ctx.fillStyle = ceiling;
     ctx.fillRect(0, 0, width, Math.max(0, horizon));
+    drawMoon(horizon);
     const floor = ctx.createLinearGradient(0, horizon, 0, height);
     floor.addColorStop(0, '#080b0d');
     floor.addColorStop(1, '#010203');
     ctx.fillStyle = floor;
     ctx.fillRect(0, Math.max(0, horizon), width, height - Math.max(0, horizon));
+    drawTexturedFloor(horizon);
 
     const columns = Math.ceil(width / 2);
     const strip = width / columns;
@@ -352,8 +453,21 @@
   function playMonsterSound() {
     try { monsterSound.pause(); monsterSound.currentTime = 0; monsterSound.volume = .85; const p = monsterSound.play(); if (p) p.catch(() => {}); } catch (_) {}
   }
+  function stopFootsteps() {
+    if (!footstepsAudio.paused) footstepsAudio.pause();
+    try { if (footstepsAudio.currentTime !== 0) footstepsAudio.currentTime = 0; } catch (_) {}
+  }
+  function syncFootsteps(moving, movementSpeed) {
+    if (!moving || !isPlaying || isPaused) { stopFootsteps(); return; }
+    footstepsAudio.volume = 0.52;
+    footstepsAudio.playbackRate = Math.max(0.72, Math.min(1.22, movementSpeed / player.speed));
+    if (footstepsAudio.paused) {
+      const promise = footstepsAudio.play();
+      if (promise && typeof promise.catch === 'function') promise.catch(() => {});
+    }
+  }
   function stopAllAudio() {
-    [introMusic, gameMusic, monsterSound].forEach(audio => { audio.pause(); audio.currentTime = 0; });
+    [introMusic, gameMusic, monsterSound, footstepsAudio].forEach(audio => { audio.pause(); audio.currentTime = 0; });
   }
 
   function getHistory() {
@@ -425,7 +539,7 @@
     elapsedSeconds = 0;
     startedAt = performance.now();
     runRecorded = false;
-    nextMonsterAt = MONSTER_INTERVAL_SECONDS;
+    nextMonsterAt = MONSTER_INITIAL_DELAY_SECONDS;
     encounterCount = 0;
     monster = null;
     isPlaying = true;
@@ -439,6 +553,7 @@
     $('gameHint').style.display = mobile ? 'none' : '';
     showAbout(false);
     setScreen('game');
+    stopFootsteps();
     startAudio(gameMusic);
     if (!mobile && canvas.requestPointerLock) {
       try { canvas.requestPointerLock(); } catch (_) {}
@@ -449,6 +564,7 @@
     isPlaying = false;
     isPaused = false;
     monster = null;
+    stopFootsteps();
     if (document.pointerLockElement) document.exitPointerLock();
     setScreen('home');
     showAbout(false);
@@ -477,7 +593,7 @@
       if (position) break;
     }
     if (!position) {
-      nextMonsterAt = elapsedSeconds + MONSTER_INTERVAL_SECONDS;
+      nextMonsterAt = elapsedSeconds + Math.min(4, getMonsterInterval());
       return;
     }
     monster = { x: position.x, y: position.y, active: true, elapsed: 0, escapeTime: 0, closeHit: false };
@@ -515,7 +631,7 @@
 
     if (monster.escapeTime > 4.2 || monster.elapsed > 18 || distance < .5) {
       monster = null;
-      nextMonsterAt = elapsedSeconds + MONSTER_INTERVAL_SECONDS;
+      nextMonsterAt = elapsedSeconds + getMonsterInterval();
     }
     if (health <= 0) endRunByDeath();
   }
@@ -552,9 +668,13 @@
     const step = player.speed * dt;
     const dx = (cos * forward - sin * strafe) * step;
     const dy = (sin * forward + cos * strafe) * step;
+    const previousX = player.x;
+    const previousY = player.y;
     if (dx || dy) movePlayer(dx, dy);
+    const actualDistance = Math.hypot(player.x - previousX, player.y - previousY);
+    syncFootsteps(actualDistance > 0.0005, dt > 0 ? actualDistance / dt : 0);
 
-    if (!monster && elapsedSeconds >= nextMonsterAt && encounterCount < 4) spawnMonster();
+    if (!monster && elapsedSeconds >= nextMonsterAt) spawnMonster();
     updateMonster(dt, forward, strafe);
     if (!isPlaying) return;
     updateDoorAim();
@@ -563,6 +683,7 @@
 
   function openExitOptions() {
     if (!isPlaying || !doorAimed) return;
+    stopFootsteps();
     isPaused = true;
     setScreen('exitOptions');
     if (document.pointerLockElement) document.exitPointerLock();
@@ -574,6 +695,7 @@
     isPlaying = false;
     isPaused = false;
     monster = null;
+    stopFootsteps();
     if (document.pointerLockElement) document.exitPointerLock();
     setScreen('ending');
     // The ending remains on screen for roughly 12.4 seconds, then returns to the menu.
@@ -590,6 +712,7 @@
     isPlaying = false;
     isPaused = false;
     monster = null;
+    stopFootsteps();
     if (document.pointerLockElement) document.exitPointerLock();
     setScreen('dead');
     deathTimer = setTimeout(() => returnHome(), 3600);
@@ -597,6 +720,7 @@
 
   function pauseGame() {
     if (!isPlaying || isPaused) return;
+    stopFootsteps();
     isPaused = true;
     setScreen('paused');
     if (document.pointerLockElement) document.exitPointerLock();
@@ -634,7 +758,7 @@
     }
   });
   window.addEventListener('keyup', event => { keys[event.code] = false; });
-  window.addEventListener('blur', () => { Object.keys(keys).forEach(key => { keys[key] = false; }); });
+  window.addEventListener('blur', () => { Object.keys(keys).forEach(key => { keys[key] = false; }); stopFootsteps(); });
 
   canvas.addEventListener('click', () => {
     if (!isPlaying || isPaused) return;
@@ -652,8 +776,10 @@
   });
   document.addEventListener('mousemove', event => {
     if (!pointerLocked || !isPlaying || isPaused) return;
-    player.angle += event.movementX * MOUSE_LOOK_SENSITIVITY;
-    player.pitch = Math.max(-.72, Math.min(.72, player.pitch - event.movementY * MOUSE_PITCH_SENSITIVITY));
+    const mouseX = Math.max(-80, Math.min(80, event.movementX));
+    const mouseY = Math.max(-80, Math.min(80, event.movementY));
+    player.angle += mouseX * MOUSE_LOOK_SENSITIVITY;
+    player.pitch = Math.max(-.72, Math.min(.72, player.pitch - mouseY * MOUSE_PITCH_SENSITIVITY));
   });
 
   // Mobile movement joystick.
@@ -692,8 +818,10 @@
   });
   lookZone.addEventListener('pointermove', event => {
     if (event.pointerId !== lookPointer) return;
-    player.angle += (event.clientX - lastLookX) * .006;
-    player.pitch = Math.max(-.72, Math.min(.72, player.pitch - (event.clientY - lastLookY) * .005));
+    const dragX = Math.max(-100, Math.min(100, event.clientX - lastLookX));
+    const dragY = Math.max(-100, Math.min(100, event.clientY - lastLookY));
+    player.angle += dragX * .0085;
+    player.pitch = Math.max(-.72, Math.min(.72, player.pitch - dragY * .0065));
     lastLookX = event.clientX;
     lastLookY = event.clientY;
   });
