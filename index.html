@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <meta name="theme-color" content="#070809">
+  <meta name="description" content="DREADWALLS — Find your way out of the infinite building.">
+  <title>DREADWALLS — The Infinite Building</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main id="app">
+    <!-- HOME / ABOUT DASHBOARD -->
+    <section id="dashboard" class="dashboard screen active" aria-label="DREADWALLS menu">
+      <div class="menu-side">
+        <div class="edition">AN INFINITE BUILDING EXPERIENCE <span>01 / UNKNOWN</span></div>
+        <nav class="main-nav" aria-label="Main menu">
+          <button class="nav-button selected" id="playButton"><span>01</span> PLAY <i>↗</i></button>
+          <button class="nav-button" id="aboutButton"><span>02</span> ABOUT <i>↗</i></button>
+        </nav>
+        <div class="menu-bottom">
+          <div class="status-dot"></div>
+          <span>THE EXIT IS SOMEWHERE INSIDE</span>
+          <small>V 1.0.0 · DESKTOP / MOBILE</small>
+        </div>
+      </div>
+
+      <div class="brand-side">
+        <div class="brand-topline"><span>YOU ARE NOT WHERE YOU THINK YOU ARE.</span><span>EST. UNKNOWN</span></div>
+        <div class="brand-lockup" aria-label="DREADWALLS logo">
+          <div class="brand-mark"><span>D</span><span>W</span></div>
+          <div class="brand-word">DREAD<span>WALLS</span></div>
+          <div class="brand-rule"></div>
+          <p class="tagline">THE INFINITE BUILDING</p>
+        </div>
+        <div class="brand-coordinate">SECTOR 00 — LOCATION UNAVAILABLE</div>
+        <div class="brand-vertical">KEEP MOVING. DON'T LOOK BACK.</div>
+      </div>
+
+      <section id="aboutPanel" class="about-panel" aria-hidden="true">
+        <div class="about-heading">
+          <div>
+            <div class="eyebrow">DREADWALLS / FIELD NOTES</div>
+            <h1>ABOUT <span>THE BUILDING</span></h1>
+          </div>
+          <button class="close-button" id="closeAbout" aria-label="Close about">×</button>
+        </div>
+        <div class="about-copy">
+          <p class="about-lead">There is no outside on the map. Only another corridor.</p>
+          <p>You wake inside a building that seems to have no end. Find the exit and keep your distance from the faceless shadow. Directly staring at it drains 10 health each second. Look away and keep moving until it disappears.</p>
+          <div class="controls-grid">
+            <div><b>MOVE</b><span>W A S D</span></div>
+            <div><b>LOOK</b><span>MOUSE / TOUCH</span></div>
+            <div><b>OPEN EXIT</b><span>CLICK / E</span></div>
+            <div><b>PAUSE</b><span>ESC</span></div>
+          </div>
+        </div>
+        <div class="history-wrap">
+          <div class="history-title"><h2>RUN HISTORY</h2><span>FASTEST FIRST · THIS DEVICE</span></div>
+          <div id="historyList" class="history-list">
+            <div class="empty-history">NO RUNS RECORDED.<br>THE FIRST ONE IS YOURS.</div>
+          </div>
+          <button id="clearHistory" class="clear-history">CLEAR LOCAL HISTORY</button>
+        </div>
+      </section>
+    </section>
+
+    <!-- GAME VIEW -->
+    <section id="gameScreen" class="game-screen screen" aria-label="DREADWALLS gameplay">
+      <canvas id="game" aria-label="First-person game view"></canvas>
+      <div class="game-vignette"></div>
+      <div class="game-hud">
+        <div class="hud-top">
+          <div class="health-panel">
+            <div class="hud-label">VITALITY <span id="healthValue">100</span><small> / 100</small></div>
+            <div class="health-track"><div id="healthFill" class="health-fill"></div></div>
+          </div>
+          <div class="timer-panel"><span class="hud-label">TIME INSIDE</span><strong id="stopwatch">00:00</strong></div>
+          <button id="pauseButton" class="pause-button" aria-label="Pause game">Ⅱ</button>
+        </div>
+        <div id="crosshair" class="crosshair" aria-hidden="true"><i></i><b></b></div>
+        <div id="doorPrompt" class="door-prompt">EXIT FOUND — CLICK OR PRESS E</div>
+        <div id="gameHint" class="game-hint">WASD MOVE <span>·</span> MOUSE LOOK <span>·</span> E INTERACT</div>
+        <div id="mobileControls" class="mobile-controls">
+          <div id="joystick" class="joystick"><div id="stick" class="stick"></div></div>
+          <div id="lookZone" class="look-zone"><span>DRAG TO LOOK</span></div>
+          <button id="mobileInteract" class="mobile-interact">INTERACT</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- MODALS / END SCREENS -->
+    <section id="exitModal" class="modal-screen" aria-hidden="true">
+      <div class="modal-card exit-card">
+        <div class="eyebrow">THRESHOLD DETECTED</div>
+        <h2>YOU FOUND<br><span>THE DOOR.</span></h2>
+        <p>It is open. That does not mean it is safe.</p>
+        <button id="leaveButton" class="action-button primary">LEAVE THE HOUSE <span>↗</span></button>
+        <button id="sacrificeButton" class="action-button disabled" disabled>SACRIFICE YOURSELF <small>AVAILABLE IN A FUTURE CHAPTER</small></button>
+        <button id="stayButton" class="text-button">NOT YET — KEEP EXPLORING</button>
+      </div>
+    </section>
+
+    <section id="pauseModal" class="modal-screen" aria-hidden="true">
+      <div class="modal-card pause-card">
+        <div class="eyebrow">TEMPORARY STILLNESS</div>
+        <h2>DON'T GET<br><span>COMFORTABLE.</span></h2>
+        <button id="resumeButton" class="action-button primary">RETURN TO THE BUILDING <span>↗</span></button>
+        <button id="homeButton" class="text-button">ABANDON THIS RUN</button>
+      </div>
+    </section>
+
+    <section id="deathScreen" class="black-screen" aria-hidden="true">
+      <div class="death-copy"><div class="eyebrow">DREADWALLS / RUN TERMINATED</div><h2>IT FOUND YOU.</h2><p>THE BUILDING IS QUIET AGAIN.</p></div>
+    </section>
+
+    <section id="endingScreen" class="black-screen" aria-hidden="true">
+      <div class="ending-copy" id="endingCopy">CONGRATS!<br>NOT ON LEAVING THE HOUSE,<br>BUT NOT BECOMING SOMETHINGS MEAL,<br>YES YOU WILL KNOW IT LATER,</div>
+    </section>
+  </main>
+
+  <!-- Keep these filenames: add your audio files beside index.html. -->
+  <audio id="introMusic" src="into.mp3" loop preload="auto"></audio>
+  <audio id="gameMusic" src="game.mp3" loop preload="auto"></audio>
+  <audio id="monsterSound" src="monster.mp3" preload="auto"></audio>
+
+  <script src="game.js"></script>
+</body>
+</html>
