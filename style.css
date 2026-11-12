@@ -137,7 +137,6 @@ button { font: inherit; color: inherit; }
   .menu-bottom small { font-size: 7px; }
   .brand-side { min-height: 57%; padding: 26px; }
   .brand-topline { top: 22px; left: 26px; right: 26px; font-size: 7px; }
-  .brand-word { font-size: clamp(64px, 18vw, 108px); }
   .brand-logo { width: min(100%, 520px); height: min(30vh, 250px); object-position: center; }
   .brand-rule { margin-top: 24px; }
   .tagline { font-size: 8px; }
