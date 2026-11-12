@@ -66,7 +66,7 @@
   let runRecorded = false;
   let health = 100;
   let monster = null;
-  let nextMonsterAt = MONSTER_INITIAL_DELAY_SECONDS;
+  let nextMonsterAt = DIFFICULTIES.medium.monsterInitialDelay;
   let encounterCount = 0;
   let echoes = [];
   let echoesCollected=0;
