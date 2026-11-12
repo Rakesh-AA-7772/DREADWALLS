@@ -25,10 +25,14 @@
   const lookZone = $('lookZone');
   const mobileInteract = $('mobileInteract');
   const doorPrompt = $('doorPrompt');
+  const objectiveLabel = $('objectiveLabel');
+  const echoCountLabel = $('echoCount');
+  const exitTrace = $('exitTrace');
 
   const HISTORY_KEY = 'dreadwalls.runHistory.v1';
   const MAP_SIZE = 51; // larger odd-sized maze; raycasting remains bounded by the 64-step guard
   const MONSTER_INITIAL_DELAY_SECONDS = 18;
+  const OPTIONAL_ECHO_COUNT = 3;
   const MOUSE_LOOK_SENSITIVITY = 0.0050;
   const MOUSE_PITCH_SENSITIVITY = 0.0040;
   const FOV = Math.PI / 3;
@@ -53,6 +57,8 @@
   let monster = null;
   let nextMonsterAt = MONSTER_INITIAL_DELAY_SECONDS;
   let encounterCount = 0;
+  let echoes = [];
+  let echoesCollected = 0;
   let doorAimed = false;
   let doorImageReady = false;
   let wallImageReady = false;
@@ -102,14 +108,15 @@
   moonTexture.src = 'moon.png';
 
   function resize() {
-    const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+    const dpr = Math.min(window.devicePixelRatio || 1, mobile ? 1.15 : 1.5);
     width = window.innerWidth;
     height = window.innerHeight;
     canvas.width = Math.floor(width * dpr);
     canvas.height = Math.floor(height * dpr);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    floorBuffer.width = Math.max(1, Math.ceil(width / 3));
-    floorBuffer.height = Math.max(1, Math.ceil(height / 3));
+    const floorResolutionDivisor = mobile ? 4 : 3;
+    floorBuffer.width = Math.max(1, Math.ceil(width / floorResolutionDivisor));
+    floorBuffer.height = Math.max(1, Math.ceil(height / floorResolutionDivisor));
     floorBufferImage = floorBufferCtx.createImageData(floorBuffer.width, floorBuffer.height);
   }
   window.addEventListener('resize', () => {
@@ -126,8 +133,8 @@
   }
   function getMonsterInterval() {
     // Encounters become progressively more frequent as the run and encounter count increase.
-    const pressure = encounterCount * 2 + Math.floor(elapsedSeconds / 45) * 1.5;
-    return Math.max(4, 18 - pressure);
+    const pressure = encounterCount * 1.5 + Math.floor(elapsedSeconds / 75) * 1.25;
+    return Math.max(9, 18 - pressure);
   }
   function formatTime(seconds) {
     const safe = Math.max(0, Math.floor(seconds));
@@ -137,6 +144,38 @@
   }
 
   // Generate a classic maze with a guaranteed connected route to the far exit.
+  function placeEchoes() {
+    const candidates = [];
+    for (let y = 2; y < MAP_SIZE - 2; y++) {
+      for (let x = 2; x < MAP_SIZE - 2; x++) {
+        if (map[y][x] !== 0) continue;
+        const px = x + 0.5, py = y + 0.5;
+        if (Math.hypot(px - player.x, py - player.y) < 7) continue;
+        if (Math.hypot(px - exitDoor.x, py - exitDoor.y) < 5) continue;
+        candidates.push({ x: px, y: py, collected: false });
+      }
+    }
+    for (let i = candidates.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
+    }
+    echoes = [];
+    for (const candidate of candidates) {
+      if (echoes.every(echo => Math.hypot(echo.x - candidate.x, echo.y - candidate.y) >= 6)) {
+        echoes.push(candidate);
+        if (echoes.length === OPTIONAL_ECHO_COUNT) break;
+      }
+    }
+    if (echoes.length < OPTIONAL_ECHO_COUNT) {
+      for (const candidate of candidates) {
+        if (echoes.includes(candidate)) continue;
+        echoes.push(candidate);
+        if (echoes.length === OPTIONAL_ECHO_COUNT) break;
+      }
+    }
+    echoesCollected = 0;
+  }
+
   function generateMaze() {
     const size = MAP_SIZE;
     const next = Array.from({ length: size }, () => Array(size).fill(1));
@@ -265,6 +304,50 @@
   }
 
   // An entirely faceless silhouette: no eyes, mouth, or identifiable features.
+  function drawEchoSprites(zBuffer, horizon) {
+    for (const echo of echoes) {
+      if (echo.collected) continue;
+      const view = getObjectView(echo);
+      if (view.distance > 14 || Math.abs(view.angle) > FOV * 0.92) continue;
+      const rayIndex = Math.floor((0.5 + Math.tan(view.angle) / (2 * Math.tan(FOV / 2))) * zBuffer.length);
+      const wallDistance = zBuffer[Math.max(0, Math.min(zBuffer.length - 1, rayIndex))];
+      if (view.distance > wallDistance + 0.12) continue;
+      const screenX = width * 0.5 + Math.tan(view.angle) / Math.tan(FOV / 2) * width * 0.5;
+      const size = Math.max(6, Math.min(25, height / Math.max(1, view.distance) * 0.055));
+      const screenY = horizon + Math.min(height * 0.30, height / (view.distance + 1) * 0.13);
+      const pulse = 0.62 + Math.sin(elapsedSeconds * 3.4 + echo.x) * 0.16;
+      ctx.save();
+      ctx.globalAlpha = pulse;
+      ctx.shadowColor = 'rgba(178,78,68,.9)';
+      ctx.shadowBlur = size * 1.3;
+      ctx.strokeStyle = '#c87568';
+      ctx.fillStyle = 'rgba(134,49,43,.30)';
+      ctx.lineWidth = Math.max(1, size * 0.09);
+      ctx.beginPath();
+      ctx.arc(screenX, screenY, size * 0.72, 0, Math.PI * 2);
+      ctx.fill(); ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(screenX, screenY - size);
+      ctx.lineTo(screenX + size * 0.62, screenY);
+      ctx.lineTo(screenX, screenY + size);
+      ctx.lineTo(screenX - size * 0.62, screenY);
+      ctx.closePath();
+      ctx.fillStyle = '#d5a49a'; ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  function drawMonsterPresence() {
+    if (!monster || !monster.active) return;
+    const distance = Math.hypot(monster.x - player.x, monster.y - player.y);
+    if (distance > 7) return;
+    const pulse = 0.018 + (1 - distance / 7) * (0.025 + Math.sin(monster.elapsed * 4.2) * 0.008);
+    const edge = ctx.createRadialGradient(width * 0.5, height * 0.5, Math.min(width, height) * 0.2, width * 0.5, height * 0.5, Math.max(width, height) * 0.72);
+    edge.addColorStop(0, 'rgba(0,0,0,0)');
+    edge.addColorStop(1, `rgba(65,12,12,${Math.max(0.01, pulse)})`);
+    ctx.fillStyle = edge; ctx.fillRect(0, 0, width, height);
+  }
+
   function drawMonsterShadow(zBuffer, strip, horizon) {
     if (!monster || !monster.active) return;
     const view = getObjectView(monster);
@@ -430,7 +513,9 @@
     ctx.fillRect(0, Math.max(0, horizon), width, height - Math.max(0, horizon));
 
     drawDoorSprite(zBuffer, strip, horizon);
+    drawEchoSprites(zBuffer, horizon);
     drawMonsterShadow(zBuffer, strip, horizon);
+    drawMonsterPresence();
 
     const vignette = ctx.createRadialGradient(width * .5, horizon, Math.min(width, height) * .05, width * .5, horizon, Math.max(width, height) * .76);
     vignette.addColorStop(0, 'rgba(0,0,0,.02)');
@@ -542,12 +627,14 @@
     nextMonsterAt = MONSTER_INITIAL_DELAY_SECONDS;
     encounterCount = 0;
     monster = null;
+    placeEchoes();
     isPlaying = true;
     isPaused = false;
     doorAimed = false;
     $('healthValue').textContent = '100';
     $('healthFill').style.width = '100%';
     $('stopwatch').textContent = '00:00';
+    updateHUD();
     doorPrompt.classList.remove('visible');
     mobileInteract.classList.remove('visible');
     $('gameHint').style.display = mobile ? 'none' : '';
@@ -575,6 +662,27 @@
     $('healthValue').textContent = String(Math.ceil(health));
     $('healthFill').style.width = `${Math.max(0, health)}%`;
     $('stopwatch').textContent = formatTime(elapsedSeconds);
+    objectiveLabel.textContent = echoesCollected >= OPTIONAL_ECHO_COUNT ? 'ECHO TRACE COMPLETE' : 'OPTIONAL · FIND 3 ECHOES';
+    echoCountLabel.textContent = `${echoesCollected} / ${OPTIONAL_ECHO_COUNT}`;
+    const traceReady = echoesCollected >= OPTIONAL_ECHO_COUNT;
+    exitTrace.hidden = !traceReady;
+    if (traceReady) {
+      const bearing = normalizeAngle(Math.atan2(exitDoor.y - player.y, exitDoor.x - player.x) - player.angle);
+      const direction = Math.abs(bearing) < 0.38 ? 'AHEAD' : Math.abs(bearing) > 2.76 ? 'BEHIND' : (bearing < 0 ? 'LEFT' : 'RIGHT');
+      const distance = Math.round(Math.hypot(exitDoor.x - player.x, exitDoor.y - player.y));
+      exitTrace.textContent = `EXIT TRACE · ${direction} · ABOUT ${distance}M`;
+    }
+  }
+
+  function collectEchoes() {
+    for (const echo of echoes) {
+      if (echo.collected) continue;
+      if (Math.hypot(player.x - echo.x, player.y - echo.y) <= 0.72) {
+        echo.collected = true;
+        echoesCollected = Math.min(OPTIONAL_ECHO_COUNT, echoesCollected + 1);
+        updateHUD();
+      }
+    }
   }
 
   function spawnMonster() {
@@ -593,7 +701,7 @@
       if (position) break;
     }
     if (!position) {
-      nextMonsterAt = elapsedSeconds + Math.min(4, getMonsterInterval());
+      nextMonsterAt = elapsedSeconds + getMonsterInterval();
       return;
     }
     monster = { x: position.x, y: position.y, active: true, elapsed: 0, escapeTime: 0, closeHit: false };
@@ -613,7 +721,8 @@
     const dx = player.x - monster.x;
     const dy = player.y - monster.y;
     const distance = Math.max(.001, Math.hypot(dx, dy));
-    const speed = visible ? .46 : 1.05;
+    const escalation = Math.min(0.12, Math.max(0, encounterCount - 1) * 0.015);
+    const speed = visible ? 0.38 + escalation * 0.35 : (monster.elapsed < 3.5 ? 0.48 : 0.82 + escalation);
     const mx = (dx / distance) * speed * dt;
     const my = (dy / distance) * speed * dt;
     if (!isWall(monster.x + mx, monster.y)) monster.x += mx;
@@ -673,6 +782,7 @@
     if (dx || dy) movePlayer(dx, dy);
     const actualDistance = Math.hypot(player.x - previousX, player.y - previousY);
     syncFootsteps(actualDistance > 0.0005, dt > 0 ? actualDistance / dt : 0);
+    collectEchoes();
 
     if (!monster && elapsedSeconds >= nextMonsterAt) spawnMonster();
     updateMonster(dt, forward, strafe);
@@ -811,6 +921,7 @@
 
   // Drag on the right half to look horizontally and vertically.
   lookZone.addEventListener('pointerdown', event => {
+    event.preventDefault();
     lookPointer = event.pointerId;
     lastLookX = event.clientX;
     lastLookY = event.clientY;

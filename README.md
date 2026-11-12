@@ -17,7 +17,7 @@ Explore the procedurally generated corridors of the Infinite Building and find t
 
 **PC:** WASD to move, mouse to look left/right and up/down, E or click when the exit is centred and close, ESC to pause.
 
-**Mobile:** left virtual joystick to move, drag the right side of the screen to look, use the INTERACT button when it appears.
+**Mobile:** use the left touch pad to move and the right touch pad to look. The larger pause and INTERACT buttons are positioned for touch use; controls respect phone safe areas.
 
 ## Rules
 
@@ -27,6 +27,7 @@ Explore the procedurally generated corridors of the Infinite Building and find t
 - Turn away and keep moving to make the shadow withdraw.
 - The first shadow encounter is scheduled 18 seconds into a run. Further encounters become progressively more frequent as the run continues, with no fixed encounter-count cap.
 - Reaching zero health ends the run immediately, then returns to the home screen.
+- Optional objective: collect three glowing echo marks placed along the maze. All three reveal a non-essential direction and approximate-distance hint to the exit; collecting them is not required to escape.
 - Aim at the exit door and press E / click to open the exit choices.
 - `LEAVE THE HOUSE` records a successful run and displays the 12.4-second ending.
 - `SACRIFICE YOURSELF` is present but disabled for a future chapter.
@@ -39,4 +40,4 @@ The stopwatch starts when PLAY is selected and stops when the run ends. The Abou
 
 The game references `into.mp3` on the dashboard, `game.mp3` during gameplay, `monster.mp3` when a shadow encounter begins, and looping `footsteps.mp3` only while the player is actually moving. The footstep playback rate follows movement speed and stops when movement stops. `floor.jpg` textures the floor and `moon.png` is shown when the player looks upward. Browsers may block audio autoplay until the first click/tap; starting a run provides the required user interaction.
 
-See `ASSETS.txt` for optional image/audio filenames. If an image is not present, a procedural fallback is drawn so the game remains playable.
+The optional echo markers and monster proximity atmosphere are drawn in code and require no new files. See `ASSETS.txt` for the existing image/audio files; no additional assets are required for this upgrade.

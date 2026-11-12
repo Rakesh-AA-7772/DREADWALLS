@@ -46,7 +46,7 @@
         </div>
         <div class="about-copy">
           <p class="about-lead">There is no outside on the map. Only another corridor.</p>
-          <p>You wake inside a building that seems to have no end. Find the exit and keep your distance from the faceless shadow. Directly staring at it drains 10 health each second. Look away and keep moving until it disappears.</p>
+          <p>You wake inside a building that seems to have no end. Find the exit and keep your distance from the faceless shadow. Directly staring at it drains 10 health each second. Look away and keep moving until it disappears. Optional: collect three echo marks to reveal a helpful exit bearing.</p>
           <div class="controls-grid">
             <div><b>MOVE</b><span>W A S D</span></div>
             <div><b>LOOK</b><span>MOUSE / TOUCH</span></div>
@@ -78,6 +78,8 @@
           <button id="pauseButton" class="pause-button" aria-label="Pause game">Ⅱ</button>
         </div>
         <div id="crosshair" class="crosshair" aria-hidden="true"><i></i><b></b></div>
+        <div id="objectiveStatus" class="objective-status"><span id="objectiveLabel">OPTIONAL · FIND 3 ECHOES</span><strong id="echoCount">0 / 3</strong></div>
+        <div id="exitTrace" class="exit-trace" hidden></div>
         <div id="doorPrompt" class="door-prompt">EXIT FOUND — CLICK OR PRESS E</div>
         <div id="gameHint" class="game-hint">WASD MOVE <span>·</span> MOUSE LOOK <span>·</span> E INTERACT</div>
         <div id="mobileControls" class="mobile-controls">
