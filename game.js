@@ -25,6 +25,9 @@
   const gameMusic = $('gameMusic');
   const monsterSound = $('monsterSound');
   const footstepsAudio = $('footstepsAudio');
+  const doorSound = $('doorSound');
+  const overSound = $('overSound');
+  const randomSound = $('randomSound');
   const joystick = $('joystick');
   const stick = $('stick');
   const lookZone = $('lookZone');
@@ -70,6 +73,7 @@
   let encounterCount = 0;
   let cornerWatcher = null;
   let nextCornerWatcherAt = 0;
+  let nextRandomSoundAt = Infinity;
   let echoes = [];
   let echoesCollected=0;
   let loadingTimer=null, fakeDoorTimer=null;
@@ -368,6 +372,11 @@
       nextAnomalyAt = elapsedSeconds + random(18, 30);
     }
 
+    if (elapsedSeconds >= nextRandomSoundAt) {
+      if (randomSound.paused || randomSound.ended) playAudioCue(randomSound, random(.42, .68));
+      nextRandomSoundAt = elapsedSeconds + random(24, 48);
+    }
+
     if (cornerWatcher) {
       cornerWatcher.ttl -= dt;
       const view = getObjectView(cornerWatcher);
@@ -393,52 +402,64 @@
     }
   }
   function drawImpossibleAnomaly(){if(!currentDifficulty.anomalies||elapsedSeconds>=anomalyUntil)return;const p=Math.max(0,anomalyUntil-elapsedSeconds),f=.45+Math.abs(Math.sin(elapsedSeconds*19))*.35,x=width*(.28+Math.sin(elapsedSeconds*2.7)*.18),h=Math.min(height*.82,height*(.48+f*.12)),w=h*.22;ctx.save();ctx.globalAlpha=Math.min(.52,p*.22)*f;ctx.fillStyle='#010102';ctx.shadowColor='rgba(160,35,42,.7)';ctx.shadowBlur=24;ctx.beginPath();ctx.ellipse(x,height*.5-h*.31,w*.24,h*.10,0,0,Math.PI*2);ctx.fill();ctx.beginPath();ctx.moveTo(x-w*.18,height*.5-h*.23);ctx.lineTo(x-w*.52,height*.5-h*.05);ctx.lineTo(x-w*.30,height*.5+h*.43);ctx.lineTo(x+w*.30,height*.5+h*.43);ctx.lineTo(x+w*.52,height*.5-h*.05);ctx.lineTo(x+w*.18,height*.5-h*.23);ctx.closePath();ctx.fill();ctx.globalAlpha=.08+f*.08;ctx.fillStyle='#d9c5c5';for(let i=0;i<4;i++){const y=(Math.abs(Math.sin(elapsedSeconds*11+i*7.3))*height)|0;ctx.fillRect(0,y,width,1+(i%2));}ctx.restore();} 
-  function drawCornerWatcher() {
+  function drawCornerWatcher(zBuffer, horizon) {
     if (!currentDifficulty.anomalies || !cornerWatcher) return;
     const view = getObjectView(cornerWatcher);
+    if (view.distance < 2.3 || view.distance > 11 || Math.abs(view.angle) > FOV * .92) return;
+
+    const rayIndex = Math.floor((0.5 + Math.tan(view.angle) / (2 * Math.tan(FOV / 2))) * zBuffer.length);
+    const wallDistance = zBuffer[Math.max(0, Math.min(zBuffer.length - 1, rayIndex))];
+    // The eye sits just beyond this real wall corner, so the wall partly hides it.
+    if (view.distance <= wallDistance + .18) return;
+
+    const screenX = width * .5 + Math.tan(view.angle) / Math.tan(FOV / 2) * width * .5;
+    const wallHeight = Math.min(height * 2.1, height / Math.max(.55, wallDistance));
+    const size = Math.max(5, Math.min(15, wallHeight * .035));
     const side = view.angle < 0 ? -1 : 1;
-    const eyeX = side < 0 ? Math.min(48, width * .09) : width - Math.min(48, width * .09);
-    const eyeY = height * cornerWatcher.height;
-    const fade = Math.max(0, Math.min(1, (view.distance - 2.0) / 2.1)) * Math.min(1, cornerWatcher.ttl * 1.8);
+    const eyeX = screenX - side * size * 1.15;
+    const eyeY = horizon - wallHeight * (.25 + cornerWatcher.height * .12);
+    const fade = Math.min(1, cornerWatcher.ttl * 1.8) * Math.max(.25, 1 - Math.max(0, view.distance - 8) * .12);
     const blink = Math.abs(Math.sin(elapsedSeconds * 5.1 + cornerWatcher.x)) > .965;
-    const eyeH = blink ? 1.2 : Math.max(5, Math.min(12, height * .014));
-    const wedge = Math.min(width * .16, 76);
+
     ctx.save();
-    ctx.globalAlpha = .84 * fade;
-    ctx.fillStyle = 'rgba(0,0,0,.96)';
+    ctx.globalAlpha = .88 * fade;
+    ctx.fillStyle = 'rgba(0,0,0,.92)';
     ctx.beginPath();
     if (side < 0) {
-      ctx.moveTo(0, eyeY - 72); ctx.lineTo(wedge, eyeY - 38);
-      ctx.lineTo(wedge * .72, eyeY + 58); ctx.lineTo(0, eyeY + 88);
+      ctx.moveTo(eyeX - size * 2.4, eyeY - size * 2.8);
+      ctx.lineTo(eyeX + size * .8, eyeY - size * 2.1);
+      ctx.lineTo(eyeX + size * 1.1, eyeY + size * 2.5);
+      ctx.lineTo(eyeX - size * 2.2, eyeY + size * 3.4);
     } else {
-      ctx.moveTo(width, eyeY - 72); ctx.lineTo(width - wedge, eyeY - 38);
-      ctx.lineTo(width - wedge * .72, eyeY + 58); ctx.lineTo(width, eyeY + 88);
+      ctx.moveTo(eyeX + size * 2.4, eyeY - size * 2.8);
+      ctx.lineTo(eyeX - size * .8, eyeY - size * 2.1);
+      ctx.lineTo(eyeX - size * 1.1, eyeY + size * 2.5);
+      ctx.lineTo(eyeX + size * 2.2, eyeY + size * 3.4);
     }
-    ctx.closePath(); ctx.fill();
-    ctx.shadowColor = 'rgba(188,35,42,.95)';
-    ctx.shadowBlur = 18;
-    ctx.fillStyle = '#060607';
-    ctx.beginPath();
-    ctx.ellipse(eyeX, eyeY, 24, 16, side * -.12, 0, Math.PI * 2);
+    ctx.closePath();
     ctx.fill();
-    ctx.shadowColor = 'rgba(220,220,194,.85)';
-    ctx.shadowBlur = 12;
-    ctx.fillStyle = '#d8d8c7';
+
+    // One eye peering around the actual wall edge.
+    ctx.shadowColor = 'rgba(158,24,33,.95)';
+    ctx.shadowBlur = size * 1.8;
+    ctx.fillStyle = '#080607';
     ctx.beginPath();
-    ctx.ellipse(eyeX, eyeY, 14, eyeH, 0, 0, Math.PI * 2);
+    ctx.ellipse(eyeX, eyeY, size * 1.85, size * 1.22, side * -.14, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowColor = 'rgba(230,225,205,.92)';
+    ctx.shadowBlur = size * .95;
+    ctx.fillStyle = '#e2dfce';
+    ctx.beginPath();
+    ctx.ellipse(eyeX, eyeY, size * 1.08, blink ? 1 : size * .68, 0, 0, Math.PI * 2);
     ctx.fill();
     if (!blink) {
-      ctx.fillStyle = '#8b2025';
+      ctx.fillStyle = '#92252a';
       ctx.beginPath();
-      ctx.arc(eyeX + side * 1.5, eyeY, 5.5, 0, Math.PI * 2);
+      ctx.arc(eyeX + side * size * .08, eyeY, size * .42, 0, Math.PI * 2);
       ctx.fill();
-      ctx.fillStyle = '#050506';
+      ctx.fillStyle = '#050405';
       ctx.beginPath();
-      ctx.arc(eyeX + side * 1.5, eyeY, 2.6, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = 'rgba(255,255,238,.9)';
-      ctx.beginPath();
-      ctx.arc(eyeX - 2, eyeY - 2.5, 1.4, 0, Math.PI * 2);
+      ctx.arc(eyeX + side * size * .08, eyeY, size * .20, 0, Math.PI * 2);
       ctx.fill();
     }
     ctx.restore();
@@ -446,41 +467,58 @@
   function drawMonsterShadow(zBuffer, strip, horizon) {
     if (!monster || !monster.active) return;
     const view = getObjectView(monster);
-    if (view.distance > 13 || Math.abs(view.angle) > FOV * 0.82) return;
-    const rayIndex = Math.floor((0.5 + Math.tan(view.angle) / (2 * Math.tan(FOV / 2))) * zBuffer.length);
-    const wallDistance = zBuffer[Math.max(0, Math.min(zBuffer.length - 1, rayIndex))];
-    if (view.distance > wallDistance + 0.08) return;
+    if (view.distance > 14 || Math.abs(view.angle) > FOV * .94) return;
+    // Use the same grid-based visibility test as spawnMonster() rather than
+    // low-resolution ray samples, which could hide a visible monster on mobile.
+    if (!lineOfSight(monster.x, monster.y)) return;
 
-    const screenX = width * 0.5 + Math.tan(view.angle) / Math.tan(FOV / 2) * width * 0.5;
-    const spriteHeight = Math.min(height * 1.2, height / view.distance * 0.98);
-    const spriteWidth = spriteHeight * 0.46;
-    const top = horizon - spriteHeight * 0.88;
-    const left = screenX - spriteWidth * 0.5;
-    const light = Math.max(0.13, 1 - Math.abs(view.angle) / 0.8) * Math.max(0.2, 1 - view.distance / 10);
+    const screenX = width * .5 + Math.tan(view.angle) / Math.tan(FOV / 2) * width * .5;
+    const spriteHeight = Math.min(height * 1.28, height / Math.max(.8, view.distance) * 1.02);
+    const spriteWidth = spriteHeight * .43;
+    const top = horizon - spriteHeight * .86;
+    const eyeY = top + spriteHeight * .17;
+    const light = Math.max(.32, 1 - Math.abs(view.angle) / 1.1) * Math.max(.32, 1 - view.distance / 13);
 
     ctx.save();
-    ctx.globalAlpha = Math.min(.95, .58 + light * .36);
-    ctx.fillStyle = '#010203';
-    ctx.shadowColor = 'rgba(0,0,0,.95)';
-    ctx.shadowBlur = Math.max(3, spriteWidth * .12);
-    // Head: smooth blank oval, deliberately featureless.
+    ctx.globalAlpha = Math.min(.98, .76 + light * .22);
+    ctx.fillStyle = '#171316';
+    ctx.strokeStyle = 'rgba(119,48,53,.78)';
+    ctx.lineWidth = Math.max(1.5, spriteWidth * .025);
+    ctx.shadowColor = 'rgba(115,20,28,.42)';
+    ctx.shadowBlur = Math.max(8, spriteWidth * .16);
+
+    // Head silhouette with a faint, visible rim.
     ctx.beginPath();
-    ctx.ellipse(screenX, top + spriteHeight * .17, spriteWidth * .17, spriteHeight * .17, 0, 0, Math.PI * 2);
+    ctx.ellipse(screenX, eyeY, spriteWidth * .19, spriteHeight * .17, 0, 0, Math.PI * 2);
     ctx.fill();
-    // Neck and shoulders merge into a single unnatural shadow shape.
+    ctx.stroke();
+
+    // Broad shoulders and an unnaturally long torso.
     ctx.beginPath();
-    ctx.moveTo(screenX - spriteWidth * .12, top + spriteHeight * .27);
+    ctx.moveTo(screenX - spriteWidth * .13, top + spriteHeight * .27);
     ctx.lineTo(screenX - spriteWidth * .49, top + spriteHeight * .39);
-    ctx.lineTo(screenX - spriteWidth * .37, top + spriteHeight * .57);
-    ctx.lineTo(screenX - spriteWidth * .23, top + spriteHeight * .49);
-    ctx.lineTo(screenX - spriteWidth * .20, top + spriteHeight * .96);
-    ctx.lineTo(screenX + spriteWidth * .20, top + spriteHeight * .96);
-    ctx.lineTo(screenX + spriteWidth * .23, top + spriteHeight * .49);
-    ctx.lineTo(screenX + spriteWidth * .38, top + spriteHeight * .57);
+    ctx.lineTo(screenX - spriteWidth * .40, top + spriteHeight * .59);
+    ctx.lineTo(screenX - spriteWidth * .22, top + spriteHeight * .50);
+    ctx.lineTo(screenX - spriteWidth * .24, top + spriteHeight * .97);
+    ctx.lineTo(screenX + spriteWidth * .24, top + spriteHeight * .97);
+    ctx.lineTo(screenX + spriteWidth * .22, top + spriteHeight * .50);
+    ctx.lineTo(screenX + spriteWidth * .40, top + spriteHeight * .59);
     ctx.lineTo(screenX + spriteWidth * .49, top + spriteHeight * .39);
-    ctx.lineTo(screenX + spriteWidth * .12, top + spriteHeight * .27);
+    ctx.lineTo(screenX + spriteWidth * .13, top + spriteHeight * .27);
     ctx.closePath();
     ctx.fill();
+    ctx.stroke();
+
+    // Two dim red reflections make the head legible without making it bright.
+    ctx.shadowColor = 'rgba(230,45,49,.95)';
+    ctx.shadowBlur = Math.max(5, spriteWidth * .13);
+    ctx.fillStyle = '#b83b3d';
+    const eyeRadius = Math.max(1.8, spriteWidth * .025);
+    for (const eyeOffset of [-1, 1]) {
+      ctx.beginPath();
+      ctx.arc(screenX + eyeOffset * spriteWidth * .075, eyeY + spriteHeight * .012, eyeRadius, 0, Math.PI * 2);
+      ctx.fill();
+    }
     ctx.restore();
   }
 
@@ -596,11 +634,11 @@
     ctx.fillRect(0, 0, width, height);
 
     // Keep gameplay clues and entities legible above the final darkness overlay.
-    drawEchoSprites(zBuffer, horizon);
-    drawMonsterShadow(zBuffer, strip, horizon);
     drawMonsterPresence();
     drawImpossibleAnomaly();
-    drawCornerWatcher();
+    drawCornerWatcher(zBuffer, horizon);
+    drawEchoSprites(zBuffer, horizon);
+    drawMonsterShadow(zBuffer, strip, horizon);
   }
 
   function startAudio(track) {
@@ -612,9 +650,22 @@
     const promise = track.play();
     if (promise && typeof promise.catch === 'function') promise.catch(() => {});
   }
-  function playMonsterSound() {
-    try { monsterSound.pause(); monsterSound.currentTime = 0; monsterSound.volume = .85; const p = monsterSound.play(); if (p) p.catch(() => {}); } catch (_) {}
+  function playAudioCue(audio, volume = .8, loop = false) {
+    if (!audio) return;
+    try {
+      audio.pause();
+      audio.currentTime = 0;
+      audio.volume = volume;
+      audio.loop = loop;
+      const promise = audio.play();
+      if (promise && typeof promise.catch === 'function') promise.catch(() => {});
+    } catch (_) {}
   }
+  function stopAudioCue(audio) {
+    if (!audio) return;
+    try { audio.pause(); audio.currentTime = 0; audio.loop = false; } catch (_) {}
+  }
+  function playMonsterSound() { playAudioCue(monsterSound, .85); }
   function stopFootsteps() {
     if (!footstepsAudio.paused) footstepsAudio.pause();
     try { if (footstepsAudio.currentTime !== 0) footstepsAudio.currentTime = 0; } catch (_) {}
@@ -629,7 +680,7 @@
     }
   }
   function stopAllAudio() {
-    [introMusic, gameMusic, monsterSound, footstepsAudio].forEach(audio => { audio.pause(); audio.currentTime = 0; });
+    [introMusic, gameMusic, monsterSound, footstepsAudio, doorSound, overSound, randomSound].forEach(stopAudioCue);
   }
 
   function getHistory() {
@@ -698,7 +749,7 @@
     elapsedSeconds = 0;
     startedAt = performance.now();
     runRecorded = false;
-    nextMonsterAt=currentDifficulty.monsterInitialDelay;encounterCount=0;monster=null;placeEchoes();placeFakeExits();anomalyUntil=0;nextAnomalyAt=random(8,16);cornerWatcher=null;nextCornerWatcherAt=random(4,8);torchFlickerPower=1;torchFlickerTimer=random(1.2,2.4);
+    nextMonsterAt=currentDifficulty.monsterInitialDelay;encounterCount=0;monster=null;placeEchoes();placeFakeExits();anomalyUntil=0;nextAnomalyAt=random(8,16);cornerWatcher=null;nextCornerWatcherAt=random(4,8);nextRandomSoundAt=currentDifficulty.anomalies?random(16,28):Infinity;torchFlickerPower=1;torchFlickerTimer=random(1.2,2.4);
     isPlaying = true;
     isPaused = false;
     doorAimed = false;
@@ -722,7 +773,7 @@
     isPlaying = false;
     isPaused = false;
     monster = null;
-    stopFootsteps();
+    stopAllAudio();
     if (document.pointerLockElement) document.exitPointerLock();
     setScreen('home');
     showAbout(false);
@@ -801,22 +852,25 @@
   }
 
   function spawnMonster() {
-    // Pick a reachable corridor tile 3–9 steps away. Prefer a visible spot in front,
-    // but never let one awkward maze turn cancel the encounter.
-    const candidates = getNearbyOpenCells(3, 9).filter(p => {
+    // Only spawn where the player can actually see the shadow. Never play an
+    // encounter sound for a monster hidden behind a wall or outside the camera.
+    const candidates = getNearbyOpenCells(3, 10).filter(p => {
       const distance = Math.hypot(p.x - player.x, p.y - player.y);
-      return distance >= 2.7 && distance <= 9.5 &&
-        Math.hypot(p.x - exitDoor.x, p.y - exitDoor.y) > 2.5;
+      return distance >= 2.7 && distance <= 10 &&
+        Math.hypot(p.x - exitDoor.x, p.y - exitDoor.y) > 2.5 &&
+        lineOfSight(p.x, p.y);
     });
-    const visible = candidates.filter(p => lineOfSight(p.x, p.y));
-    const forward = visible.filter(p => Math.abs(getObjectView(p).angle) < 1.15);
-    const pool = forward.length ? forward : (visible.length ? visible : candidates);
-    if (!pool.length) {
-      nextMonsterAt = elapsedSeconds + 3.5;
+    const forward = candidates.filter(p => Math.abs(getObjectView(p).angle) < FOV * .70);
+    if (!forward.length) {
+      nextMonsterAt = elapsedSeconds + 1.4;
       return;
     }
-    const position = pool[Math.floor(Math.random() * pool.length)];
-    monster = { x: position.x, y: position.y, active: true, elapsed: 0, escapeTime: 0, closeHit: false };
+    const position = forward[Math.floor(Math.random() * forward.length)];
+    monster = {
+      x: position.x, y: position.y, active: true,
+      elapsed: 0, escapeTime: 0, closeHit: false,
+      revealTime: 4.5
+    };
     encounterCount++;
     playMonsterSound();
   }
@@ -825,7 +879,7 @@
     if (!monster || !monster.active) return;
     monster.elapsed += dt;
     const view = getObjectView(monster);
-    const visible = view.distance < 10 && Math.abs(view.angle) < .17 && lineOfSight(monster.x, monster.y);
+    const visible = view.distance < 10 && Math.abs(view.angle) < .24 && lineOfSight(monster.x, monster.y);
     if (visible) {
       health=Math.max(0,health-currentDifficulty.stareDamage*dt);
     }
@@ -850,7 +904,8 @@
     if (lookingAway && isMoving && distance > 3.4) monster.escapeTime += dt;
     else monster.escapeTime = Math.max(0, monster.escapeTime - dt * .35);
 
-    if (monster.escapeTime > 4.2 || monster.elapsed > 18 || distance < .5) {
+    if (monster.revealTime > 0) monster.revealTime = Math.max(0, monster.revealTime - dt);
+    if ((monster.escapeTime > 4.2 && monster.revealTime <= 0) || monster.elapsed > 24 || distance < .5) {
       monster = null;
       nextMonsterAt = elapsedSeconds + getMonsterInterval();
     }
@@ -896,7 +951,7 @@
     updateHUD();
   }
 
-  function interactWithDoor(){if(!isPlaying||!doorAimed||!targetedDoor)return;if(!targetedDoor.fake){openExitOptions();return;}stopFootsteps();isPaused=true;fakeDoorToast.classList.add('visible');if(currentDifficulty.anomalies)anomalyUntil=elapsedSeconds+2.2;if(fakeDoorTimer)clearTimeout(fakeDoorTimer);fakeDoorTimer=setTimeout(()=>{fakeDoorToast.classList.remove('visible');if(!isPlaying)return;isPaused=false;setScreen('game');if(!mobile&&canvas.requestPointerLock){try{canvas.requestPointerLock();}catch(_){}}},1750);}
+  function interactWithDoor(){if(!isPlaying||!doorAimed||!targetedDoor)return;playAudioCue(doorSound,.92);if(!targetedDoor.fake){openExitOptions();return;}stopFootsteps();isPaused=true;fakeDoorToast.classList.add('visible');if(currentDifficulty.anomalies)anomalyUntil=elapsedSeconds+2.2;if(fakeDoorTimer)clearTimeout(fakeDoorTimer);fakeDoorTimer=setTimeout(()=>{fakeDoorToast.classList.remove('visible');if(!isPlaying)return;isPaused=false;setScreen('game');if(!mobile&&canvas.requestPointerLock){try{canvas.requestPointerLock();}catch(_){}}},1750);}
   function openExitOptions() {
     if (!isPlaying || !doorAimed || !targetedDoor || targetedDoor.fake) return;
     stopFootsteps();
@@ -911,15 +966,16 @@
     isPlaying = false;
     isPaused = false;
     monster = null;
-    stopFootsteps();
+    stopAllAudio();
     if (document.pointerLockElement) document.exitPointerLock();
     setScreen('ending');
+    playAudioCue(overSound, .72, true);
     // The ending remains on screen for roughly 12.4 seconds, then returns to the menu.
     const endingCopy = $('endingCopy');
     endingCopy.style.animation = 'none';
     void endingCopy.offsetWidth;
     endingCopy.style.animation = 'endingReveal 12.4s ease forwards';
-    endingTimer = setTimeout(() => returnHome(), 12600);
+    endingTimer = setTimeout(() => { stopAudioCue(overSound); returnHome(); }, 12600);
   }
 
   function endRunByDeath() {
@@ -928,7 +984,7 @@
     isPlaying = false;
     isPaused = false;
     monster = null;
-    stopFootsteps();
+    stopAllAudio();
     if (document.pointerLockElement) document.exitPointerLock();
     setScreen('dead');
     deathTimer = setTimeout(() => returnHome(), 3600);
