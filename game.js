@@ -169,7 +169,7 @@
   }
   function saveSettings(){try{localStorage.setItem(SETTINGS_KEY,JSON.stringify(settings));}catch(_){}}
   function updateSetting(key,value){settings[key]=value;saveSettings();if(['masterVolume','musicVolume','effectsVolume'].includes(key))applyAudioSettings();if(key==='graphicsQuality')resize();syncSettingsUI();}
-  function syncSettingsUI(){for(const key of ['masterVolume','musicVolume','effectsVolume','lookSensitivity']){const input=$(key),output=$(key+'Value');if(!input||!output)continue;input.value=String(settings[key]);output.textContent=Math.round(settings[key]*100)+'%;'}$('graphicsQuality').value=settings.graphicsQuality;}
+  function syncSettingsUI(){for(const key of ['masterVolume','musicVolume','effectsVolume','lookSensitivity']){const input=$(key),output=$(key+'Value');if(!input||!output)continue;input.value=String(settings[key]);output.textContent=Math.round(settings[key]*100)+'%'}$('graphicsQuality').value=settings.graphicsQuality;}
   function openSettings(){syncSettingsUI();settingsModal.classList.add('visible');settingsModal.setAttribute('aria-hidden','false');}
   function closeSettings(){settingsModal.classList.remove('visible');settingsModal.setAttribute('aria-hidden','true');}
   function updateTorchPresentation(){gameScreen.classList.toggle('torch-off',!torchOn);torchButton.setAttribute('aria-pressed',String(torchOn));torchButton.innerHTML='<span class="torch-icon">◉</span><span class="torch-label">TORCH '+(torchOn?'ON':'OFF')+'</span><small>L</small>';gameScreen.style.setProperty('--torch-power',String(torchOn?torchFlickerPower:0));}
