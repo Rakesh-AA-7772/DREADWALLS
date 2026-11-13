@@ -664,7 +664,7 @@
   }
   function stopAudioCue(audio) {
     if (!audio) return;
-    try { audio.pause(); audio.currentTime = 0; audio.loop = false; } catch (_) {}
+    try { audio.pause(); audio.currentTime = 0; } catch (_) {}
   }
   function playMonsterSound() { playAudioCue(monsterSound, .85); }
   function stopFootsteps() {
