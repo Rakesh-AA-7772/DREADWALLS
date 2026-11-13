@@ -25,11 +25,11 @@ Choose Easy, Medium or Impossible before entering the Infinite Building. Easy is
 - Looking directly at the visible shadow drains 10 health per second.
 - Close contact can cause an additional hit.
 - Turn away and keep moving to make the shadow withdraw.
-- Easy has no monster encounters. Medium and Impossible share a gradual monster schedule, beginning after 32 seconds and becoming more frequent over time.
+- Easy has no monster encounters. Medium now brings the first monster encounter after about 12 seconds; Impossible begins after about 8 seconds and has a shorter interval. Monster spawns use reachable maze corridors, so a nearby turn cannot cancel an encounter.
 - Easy uses a compact route with two turns. Medium uses a 27×27 generated maze. Impossible uses a 61×61 maze and places three to five apparent exits, only one of which is real.
-- Impossible adds a flickering torch and brief, non-damaging visual anomalies. These effects never reverse controls or block movement.
+- Impossible adds stronger, more frequent torch flickers, brief visual glitches, and a single-eye watcher that peeks from a screen corner and disappears when approached or noticed. These effects never reverse controls or block movement.
 - Reaching zero health ends the run immediately, then returns to the home screen.
-- In Medium, three Echo clues are placed directly along the main route. They are optional; collecting all three reveals a non-essential exit direction and approximate-distance hint. Easy and Impossible do not require Echo clues.
+- In Medium, three bright Echo orbs are placed along the main route. Their glow remains visible as a clue even around corners, and the HUD points toward the nearest uncollected orb. Collecting all three reveals the exit direction and approximate distance. Easy and Impossible do not require Echo clues.
 - Aim at the exit door and press E / click to open the exit choices.
 - `LEAVE THE HOUSE` records a successful run and displays the 12.4-second ending.
 - `SACRIFICE YOURSELF` is present but disabled for a future chapter.
@@ -40,6 +40,6 @@ The stopwatch starts when PLAY is selected and stops when the run ends. The Abou
 
 ## Audio autoplay
 
-The game stops `into.mp3` immediately when a level is selected, stays silent during the 2.4-second loading screen, then starts `game.mp3` when gameplay begins. `monster.mp3` plays on encounters and `footsteps.mp3` plays only while the player moves. `floor.jpg` textures the floor and `moon.png` is shown when the player looks upward. Browsers may block audio autoplay until the first click/tap; selecting a level provides the required user interaction.
+The game stops `into.mp3` immediately when a level is selected, stays silent during the 2.4-second loading screen, then starts `game.mp3` when gameplay begins. `monster.mp3` plays on encounters and `footsteps.mp3` plays only while the player moves. `floor.jpg` textures the floor. The moon rendering has been removed to keep the scene clean and responsive. Browsers may block audio autoplay until the first click/tap; selecting a level provides the required user interaction.
 
-The optional echo markers and monster proximity atmosphere are drawn in code and require no new files. See `ASSETS.txt` for the existing image/audio files; no additional assets are required for this upgrade.
+The Echo orbs, monster silhouettes, corner eye and visual anomalies are drawn in code and require no new files. Wall textures are cached at a reduced render size and the ray-strip count is tuned for smoother camera response. See `ASSETS.txt` for the existing image/audio files; no additional assets are required for this upgrade.

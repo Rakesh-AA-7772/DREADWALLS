@@ -1,14 +1,13 @@
-DREADWALLS V2 — OPTIONAL DROP-IN ASSETS
+DREADWALLS — OPTIONAL DROP-IN ASSETS
 
-Place these exact files beside index.html, style.css and game.js:
+Place these files beside index.html, style.css and game.js:
 
 walls.png      - wall texture for the first-person renderer
 door.png       - exit-door image displayed at the end of the maze
 floor.jpg      - repeating floor texture rendered in perspective
-moon.png       - full moon displayed in the sky when looking upward
 into.mp3       - home/dashboard background music
 game.mp3       - gameplay background music
 monster.mp3    - one-shot sound when a shadow encounter begins
 footsteps.mp3  - looping footsteps synchronized with player movement
 
-All listed assets are optional. Missing image assets use the game's available fallback visuals; missing audio files are silently ignored by the browser.
+The moon image is no longer used. All listed assets are optional. Missing image assets use the game's available fallback visuals; missing audio files are silently ignored by the browser.

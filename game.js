@@ -38,8 +38,8 @@
   const OPTIONAL_ECHO_COUNT = 3;
   const DIFFICULTIES = {
     easy:{id:'easy',label:'EASY',mapSize:15,monsters:false,monsterInitialDelay:Infinity,monsterBaseInterval:Infinity,monsterMinInterval:Infinity,monsterSpeed:0,stareDamage:0,closeDamage:0,echoClues:false,torchFlicker:false,anomalies:false,fakeExitCount:0,playerSpeed:3.1},
-    medium:{id:'medium',label:'MEDIUM',mapSize:27,monsters:true,monsterInitialDelay:32,monsterBaseInterval:27,monsterMinInterval:18,monsterSpeed:.78,stareDamage:6,closeDamage:10,echoClues:true,torchFlicker:false,anomalies:false,fakeExitCount:0,playerSpeed:2.8},
-    impossible:{id:'impossible',label:'IMPOSSIBLE',mapSize:61,monsters:true,monsterInitialDelay:32,monsterBaseInterval:27,monsterMinInterval:18,monsterSpeed:1,stareDamage:10,closeDamage:15,echoClues:false,torchFlicker:true,anomalies:true,fakeExitCount:2,playerSpeed:2.65}
+    medium:{id:'medium',label:'MEDIUM',mapSize:27,monsters:true,monsterInitialDelay:12,monsterBaseInterval:23,monsterMinInterval:15,monsterSpeed:.88,stareDamage:6,closeDamage:10,echoClues:true,torchFlicker:false,anomalies:false,fakeExitCount:0,playerSpeed:2.8},
+    impossible:{id:'impossible',label:'IMPOSSIBLE',mapSize:61,monsters:true,monsterInitialDelay:8,monsterBaseInterval:17,monsterMinInterval:11,monsterSpeed:1.12,stareDamage:9,closeDamage:15,echoClues:false,torchFlicker:true,anomalies:true,fakeExitCount:2,playerSpeed:2.65}
   };
   const MOUSE_LOOK_SENSITIVITY = 0.0050;
   const MOUSE_PITCH_SENSITIVITY = 0.0040;
@@ -68,6 +68,8 @@
   let monster = null;
   let nextMonsterAt = DIFFICULTIES.medium.monsterInitialDelay;
   let encounterCount = 0;
+  let cornerWatcher = null;
+  let nextCornerWatcherAt = 0;
   let echoes = [];
   let echoesCollected=0;
   let loadingTimer=null, fakeDoorTimer=null;
@@ -77,10 +79,11 @@
   let doorImageReady = false;
   let wallImageReady = false;
   let floorImageReady = false;
-  let moonImageReady = false;
   let floorTexturePixels = null;
   let floorTextureWidth = 0;
   let floorTextureHeight = 0;
+  const wallTextureBuffer = document.createElement('canvas');
+  const wallTextureBufferCtx = wallTextureBuffer.getContext('2d', { alpha: true });
   const floorBuffer = document.createElement('canvas');
   const floorBufferCtx = floorBuffer.getContext('2d', { alpha: true });
   let floorBufferImage = null;
@@ -94,7 +97,17 @@
 
   // Optional user assets. The project still runs with procedural fallbacks.
   const wallTexture = new Image();
-  wallTexture.onload = () => { wallImageReady = true; };
+  wallTexture.onload = () => {
+    // Downsample oversized source art once; per-frame ray strips use this small cached copy.
+    const maxTextureSide = 512;
+    const scale = Math.min(1, maxTextureSide / wallTexture.naturalWidth, maxTextureSide / wallTexture.naturalHeight);
+    wallTextureBuffer.width = Math.max(1, Math.round(wallTexture.naturalWidth * scale));
+    wallTextureBuffer.height = Math.max(1, Math.round(wallTexture.naturalHeight * scale));
+    wallTextureBufferCtx.imageSmoothingEnabled = true;
+    wallTextureBufferCtx.clearRect(0, 0, wallTextureBuffer.width, wallTextureBuffer.height);
+    wallTextureBufferCtx.drawImage(wallTexture, 0, 0, wallTextureBuffer.width, wallTextureBuffer.height);
+    wallImageReady = true;
+  };
   wallTexture.onerror = () => { wallImageReady = false; };
   wallTexture.src = 'walls.png';
   const doorTexture = new Image();
@@ -116,10 +129,6 @@
   };
   floorTexture.onerror = () => { floorImageReady = false; };
   floorTexture.src = 'floor.jpg';
-  const moonTexture = new Image();
-  moonTexture.onload = () => { moonImageReady = true; };
-  moonTexture.onerror = () => { moonImageReady = false; };
-  moonTexture.src = 'moon.png';
 
   function resize() {
     const dpr = Math.min(window.devicePixelRatio || 1, mobile ? 1.15 : 1.5);
@@ -282,36 +291,46 @@
     ctx.restore();
   }
 
-  // An entirely faceless silhouette: no eyes, mouth, or identifiable features.
+  // Bright, unmistakable Echo orbs. Their glow can bleed through walls as a supernatural clue.
   function drawEchoSprites(zBuffer, horizon) {
     for (const echo of echoes) {
       if (echo.collected) continue;
       const view = getObjectView(echo);
-      if (view.distance > 14 || Math.abs(view.angle) > FOV * 0.92) continue;
+      if (view.distance > 24 || Math.abs(view.angle) > FOV * 0.98) continue;
       const rayIndex = Math.floor((0.5 + Math.tan(view.angle) / (2 * Math.tan(FOV / 2))) * zBuffer.length);
       const wallDistance = zBuffer[Math.max(0, Math.min(zBuffer.length - 1, rayIndex))];
-      if (view.distance > wallDistance + 0.12) continue;
+      const occluded = view.distance > wallDistance + 0.12;
       const screenX = width * 0.5 + Math.tan(view.angle) / Math.tan(FOV / 2) * width * 0.5;
-      const size=Math.max(12,Math.min(34,height/Math.max(1,view.distance)*.09));
-      const screenY = horizon + Math.min(height * 0.30, height / (view.distance + 1) * 0.13);
-      const pulse = 0.62 + Math.sin(elapsedSeconds * 3.4 + echo.x) * 0.16;
+      const size = Math.max(19, Math.min(66, height / Math.max(1.2, view.distance) * 0.22));
+      const screenY = horizon + Math.min(height * 0.34, height / (view.distance + 0.8) * 0.15);
+      const pulse = 0.82 + Math.sin(elapsedSeconds * 3.2 + echo.x) * 0.16;
       ctx.save();
-      ctx.globalAlpha = pulse;
-      ctx.shadowColor = 'rgba(178,78,68,.9)';
-      ctx.shadowBlur = size * 1.3;
-      ctx.strokeStyle='#f0a398';
-      ctx.fillStyle='rgba(184,68,58,.52)';
-      ctx.lineWidth = Math.max(1, size * 0.09);
+      ctx.globalAlpha = (occluded ? 0.52 : 1) * pulse;
+      ctx.shadowColor = 'rgba(91,236,218,.95)';
+      ctx.shadowBlur = size * 1.7;
+      const glow = ctx.createRadialGradient(screenX, screenY, 1, screenX, screenY, size * 1.55);
+      glow.addColorStop(0, 'rgba(225,255,247,.96)');
+      glow.addColorStop(.22, 'rgba(108,244,220,.86)');
+      glow.addColorStop(.62, 'rgba(35,165,157,.32)');
+      glow.addColorStop(1, 'rgba(35,165,157,0)');
+      ctx.fillStyle = glow;
       ctx.beginPath();
-      ctx.arc(screenX, screenY, size * 0.72, 0, Math.PI * 2);
-      ctx.fill(); ctx.stroke();
+      ctx.arc(screenX, screenY, size * 1.55, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#b9fff0';
+      ctx.lineWidth = Math.max(2, size * .075);
       ctx.beginPath();
-      ctx.moveTo(screenX, screenY - size);
-      ctx.lineTo(screenX + size * 0.62, screenY);
-      ctx.lineTo(screenX, screenY + size);
-      ctx.lineTo(screenX - size * 0.62, screenY);
-      ctx.closePath();
-      ctx.fillStyle = '#d5a49a'; ctx.fill();
+      ctx.arc(screenX, screenY, size * .76, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.strokeStyle = 'rgba(206,255,246,.85)';
+      ctx.lineWidth = Math.max(1, size * .035);
+      ctx.beginPath();
+      ctx.ellipse(screenX, screenY, size * 1.08, size * .48, elapsedSeconds * .35, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.fillStyle = '#eafff7';
+      ctx.beginPath();
+      ctx.arc(screenX, screenY, size * .34, 0, Math.PI * 2);
+      ctx.fill();
       ctx.restore();
     }
   }
@@ -327,8 +346,103 @@
     ctx.fillStyle = edge; ctx.fillRect(0, 0, width, height);
   }
 
-  function updateImpossibleEffects(dt){if(!currentDifficulty.anomalies){torchFlickerPower=1;anomalyUntil=0;return;}torchFlickerTimer-=dt;if(torchFlickerTimer<=0){if(torchFlickerPower>.72){torchFlickerPower=random(.2,.48);torchFlickerTimer=random(.07,.2);}else{torchFlickerPower=random(.82,1);torchFlickerTimer=random(2.4,5.2);}}if(elapsedSeconds>=nextAnomalyAt){anomalyUntil=elapsedSeconds+random(1.8,3.2);nextAnomalyAt=elapsedSeconds+random(38,58);}}
-  function drawImpossibleAnomaly(){if(!currentDifficulty.anomalies||elapsedSeconds>=anomalyUntil)return;const p=Math.max(0,anomalyUntil-elapsedSeconds),f=.45+Math.abs(Math.sin(elapsedSeconds*19))*.35,x=width*(.28+Math.sin(elapsedSeconds*2.7)*.18),h=Math.min(height*.82,height*(.48+f*.12)),w=h*.22;ctx.save();ctx.globalAlpha=Math.min(.52,p*.22)*f;ctx.fillStyle='#010102';ctx.shadowColor='rgba(160,35,42,.7)';ctx.shadowBlur=24;ctx.beginPath();ctx.ellipse(x,height*.5-h*.31,w*.24,h*.10,0,0,Math.PI*2);ctx.fill();ctx.beginPath();ctx.moveTo(x-w*.18,height*.5-h*.23);ctx.lineTo(x-w*.52,height*.5-h*.05);ctx.lineTo(x-w*.30,height*.5+h*.43);ctx.lineTo(x+w*.30,height*.5+h*.43);ctx.lineTo(x+w*.52,height*.5-h*.05);ctx.lineTo(x+w*.18,height*.5-h*.23);ctx.closePath();ctx.fill();ctx.globalAlpha=.08+f*.08;ctx.fillStyle='#d9c5c5';for(let i=0;i<4;i++){const y=(Math.abs(Math.sin(elapsedSeconds*11+i*7.3))*height)|0;ctx.fillRect(0,y,width,1+(i%2));}ctx.restore();}
+  function updateImpossibleEffects(dt) {
+    if (!currentDifficulty.anomalies) {
+      torchFlickerPower = 1;
+      anomalyUntil = 0;
+      cornerWatcher = null;
+      return;
+    }
+    torchFlickerTimer -= dt;
+    if (torchFlickerTimer <= 0) {
+      if (torchFlickerPower > .72) {
+        torchFlickerPower = random(.10, .28);
+        torchFlickerTimer = random(.12, .30);
+      } else {
+        torchFlickerPower = random(.78, 1);
+        torchFlickerTimer = random(1.3, 3.8);
+      }
+    }
+    if (elapsedSeconds >= nextAnomalyAt) {
+      anomalyUntil = elapsedSeconds + random(1.8, 3.4);
+      nextAnomalyAt = elapsedSeconds + random(18, 30);
+    }
+
+    if (cornerWatcher) {
+      cornerWatcher.ttl -= dt;
+      const view = getObjectView(cornerWatcher);
+      const isClose = view.distance < 2.35;
+      const playerCaughtItsGaze = Math.abs(view.angle) < .22 && lineOfSight(cornerWatcher.x, cornerWatcher.y);
+      if (isClose || playerCaughtItsGaze || cornerWatcher.ttl <= 0) {
+        cornerWatcher = null;
+        nextCornerWatcherAt = elapsedSeconds + random(8, 14);
+      }
+    } else if (elapsedSeconds >= nextCornerWatcherAt) {
+      const corners = getNearbyOpenCells(3, 11).filter(p => {
+        const distance = Math.hypot(p.x - player.x, p.y - player.y);
+        if (distance < 3 || distance > 10 || lineOfSight(p.x, p.y)) return false;
+        const wallSides = [[.8,0],[-.8,0],[0,.8],[0,-.8]]
+          .filter(([dx,dy]) => isWall(p.x + dx, p.y + dy)).length;
+        return wallSides >= 2;
+      });
+      if (corners.length) {
+        const p = corners[Math.floor(Math.random() * corners.length)];
+        cornerWatcher = { x:p.x, y:p.y, ttl:random(2.8, 5.2), height:random(.22, .68) };
+      }
+      nextCornerWatcherAt = elapsedSeconds + random(10, 17);
+    }
+  }
+  function drawImpossibleAnomaly(){if(!currentDifficulty.anomalies||elapsedSeconds>=anomalyUntil)return;const p=Math.max(0,anomalyUntil-elapsedSeconds),f=.45+Math.abs(Math.sin(elapsedSeconds*19))*.35,x=width*(.28+Math.sin(elapsedSeconds*2.7)*.18),h=Math.min(height*.82,height*(.48+f*.12)),w=h*.22;ctx.save();ctx.globalAlpha=Math.min(.52,p*.22)*f;ctx.fillStyle='#010102';ctx.shadowColor='rgba(160,35,42,.7)';ctx.shadowBlur=24;ctx.beginPath();ctx.ellipse(x,height*.5-h*.31,w*.24,h*.10,0,0,Math.PI*2);ctx.fill();ctx.beginPath();ctx.moveTo(x-w*.18,height*.5-h*.23);ctx.lineTo(x-w*.52,height*.5-h*.05);ctx.lineTo(x-w*.30,height*.5+h*.43);ctx.lineTo(x+w*.30,height*.5+h*.43);ctx.lineTo(x+w*.52,height*.5-h*.05);ctx.lineTo(x+w*.18,height*.5-h*.23);ctx.closePath();ctx.fill();ctx.globalAlpha=.08+f*.08;ctx.fillStyle='#d9c5c5';for(let i=0;i<4;i++){const y=(Math.abs(Math.sin(elapsedSeconds*11+i*7.3))*height)|0;ctx.fillRect(0,y,width,1+(i%2));}ctx.restore();} 
+  function drawCornerWatcher() {
+    if (!currentDifficulty.anomalies || !cornerWatcher) return;
+    const view = getObjectView(cornerWatcher);
+    const side = view.angle < 0 ? -1 : 1;
+    const eyeX = side < 0 ? Math.min(48, width * .09) : width - Math.min(48, width * .09);
+    const eyeY = height * cornerWatcher.height;
+    const fade = Math.max(0, Math.min(1, (view.distance - 2.0) / 2.1)) * Math.min(1, cornerWatcher.ttl * 1.8);
+    const blink = Math.abs(Math.sin(elapsedSeconds * 5.1 + cornerWatcher.x)) > .965;
+    const eyeH = blink ? 1.2 : Math.max(5, Math.min(12, height * .014));
+    const wedge = Math.min(width * .16, 76);
+    ctx.save();
+    ctx.globalAlpha = .84 * fade;
+    ctx.fillStyle = 'rgba(0,0,0,.96)';
+    ctx.beginPath();
+    if (side < 0) {
+      ctx.moveTo(0, eyeY - 72); ctx.lineTo(wedge, eyeY - 38);
+      ctx.lineTo(wedge * .72, eyeY + 58); ctx.lineTo(0, eyeY + 88);
+    } else {
+      ctx.moveTo(width, eyeY - 72); ctx.lineTo(width - wedge, eyeY - 38);
+      ctx.lineTo(width - wedge * .72, eyeY + 58); ctx.lineTo(width, eyeY + 88);
+    }
+    ctx.closePath(); ctx.fill();
+    ctx.shadowColor = 'rgba(188,35,42,.95)';
+    ctx.shadowBlur = 18;
+    ctx.fillStyle = '#060607';
+    ctx.beginPath();
+    ctx.ellipse(eyeX, eyeY, 24, 16, side * -.12, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowColor = 'rgba(220,220,194,.85)';
+    ctx.shadowBlur = 12;
+    ctx.fillStyle = '#d8d8c7';
+    ctx.beginPath();
+    ctx.ellipse(eyeX, eyeY, 14, eyeH, 0, 0, Math.PI * 2);
+    ctx.fill();
+    if (!blink) {
+      ctx.fillStyle = '#8b2025';
+      ctx.beginPath();
+      ctx.arc(eyeX + side * 1.5, eyeY, 5.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#050506';
+      ctx.beginPath();
+      ctx.arc(eyeX + side * 1.5, eyeY, 2.6, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,238,.9)';
+      ctx.beginPath();
+      ctx.arc(eyeX - 2, eyeY - 2.5, 1.4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
   function drawMonsterShadow(zBuffer, strip, horizon) {
     if (!monster || !monster.active) return;
     const view = getObjectView(monster);
@@ -370,32 +484,10 @@
     ctx.restore();
   }
 
-  function drawMoon(horizon) {
-    if (!moonImageReady || player.pitch < 0.08 || horizon <= 0) return;
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(0, 0, width, Math.min(height, horizon));
-    ctx.clip();
-    const moonSize = Math.min(190, Math.max(72, Math.min(width, height) * 0.18));
-    const aspect = moonTexture.naturalWidth / Math.max(1, moonTexture.naturalHeight);
-    const moonWidth = moonSize * aspect;
-    const moonHeight = moonSize;
-    const moonX = width * 0.72;
-    const moonY = height * (0.22 + Math.min(player.pitch, 0.72) * 0.20);
-    const glow = ctx.createRadialGradient(moonX, moonY, moonSize * 0.12, moonX, moonY, moonSize * 1.35);
-    glow.addColorStop(0, 'rgba(215,225,238,.18)');
-    glow.addColorStop(1, 'rgba(215,225,238,0)');
-    ctx.fillStyle = glow;
-    ctx.fillRect(moonX - moonSize * 1.4, moonY - moonSize * 1.4, moonSize * 2.8, moonSize * 2.8);
-    ctx.globalAlpha = 0.96;
-    ctx.drawImage(moonTexture, moonX - moonWidth * 0.5, moonY - moonHeight * 0.5, moonWidth, moonHeight);
-    ctx.restore();
-  }
-
   function drawTexturedFloor(horizon) {
     if (!floorImageReady || !floorTexturePixels || !floorBufferImage) return;
     const pixels = floorBufferImage.data;
-    pixels.fill(0); // Transparent above the horizon so the ceiling and moon remain visible.
+    pixels.fill(0); // Transparent above the horizon so the dark ceiling remains visible.
     const bufferWidth = floorBuffer.width;
     const bufferHeight = floorBuffer.height;
     const cosine = Math.cos(player.angle);
@@ -442,7 +534,6 @@
     ceiling.addColorStop(1, '#090d10');
     ctx.fillStyle = ceiling;
     ctx.fillRect(0, 0, width, Math.max(0, horizon));
-    drawMoon(horizon);
     const floor = ctx.createLinearGradient(0, horizon, 0, height);
     floor.addColorStop(0, '#080b0d');
     floor.addColorStop(1, '#010203');
@@ -450,7 +541,7 @@
     ctx.fillRect(0, Math.max(0, horizon), width, height - Math.max(0, horizon));
     drawTexturedFloor(horizon);
 
-    const columns = Math.ceil(width / 2);
+    const columns = Math.ceil(width / (mobile ? 3 : 3.5));
     const strip = width / columns;
     const zBuffer = new Float32Array(columns);
     for (let i = 0; i < columns; i++) {
@@ -471,12 +562,11 @@
       const illumination=Math.pow(beam,1.65)*Math.pow(range,1.2)*tp;
       const sideShade = ray.side ? .66 : 1;
 
-      if (wallImageReady && wallTexture.naturalWidth > 0) {
-        const sx = Math.min(wallTexture.naturalWidth - 1, Math.floor(textureU * wallTexture.naturalWidth));
-        ctx.save();
+      if (wallImageReady && wallTextureBuffer.width > 0) {
+        const sx = Math.min(wallTextureBuffer.width - 1, Math.floor(textureU * wallTextureBuffer.width));
         ctx.globalAlpha = Math.min(1, (.035 + illumination * .96) * 1.48 * sideShade);
-        ctx.drawImage(wallTexture, sx, 0, 1, wallTexture.naturalHeight, i * strip, top, strip + 1, wallHeight);
-        ctx.restore();
+        ctx.drawImage(wallTextureBuffer, sx, 0, 1, wallTextureBuffer.height, i * strip, top, strip + 1, wallHeight);
+        ctx.globalAlpha = 1;
         ctx.fillStyle = `rgba(0,0,0,${Math.max(.05, .965 - illumination * sideShade)})`;
         ctx.fillRect(i * strip, top, strip + 1, wallHeight);
       } else {
@@ -496,7 +586,6 @@
     ctx.fillRect(0, Math.max(0, horizon), width, height - Math.max(0, horizon));
 
     for(const door of exitDoors)drawDoorSprite(door,zBuffer,strip,horizon);
-    drawEchoSprites(zBuffer,horizon);drawMonsterShadow(zBuffer,strip,horizon);drawMonsterPresence();drawImpossibleAnomaly();
 
     const vignette = ctx.createRadialGradient(width * .5, horizon, Math.min(width, height) * .05, width * .5, horizon, Math.max(width, height) * .76);
     vignette.addColorStop(0, 'rgba(0,0,0,.02)');
@@ -505,6 +594,13 @@
     vignette.addColorStop(1, 'rgba(0,0,0,.98)');
     ctx.fillStyle = vignette;
     ctx.fillRect(0, 0, width, height);
+
+    // Keep gameplay clues and entities legible above the final darkness overlay.
+    drawEchoSprites(zBuffer, horizon);
+    drawMonsterShadow(zBuffer, strip, horizon);
+    drawMonsterPresence();
+    drawImpossibleAnomaly();
+    drawCornerWatcher();
   }
 
   function startAudio(track) {
@@ -602,7 +698,7 @@
     elapsedSeconds = 0;
     startedAt = performance.now();
     runRecorded = false;
-    nextMonsterAt=currentDifficulty.monsterInitialDelay;encounterCount=0;monster=null;placeEchoes();placeFakeExits();anomalyUntil=0;nextAnomalyAt=random(38,55);torchFlickerPower=1;torchFlickerTimer=random(1.8,3.2);
+    nextMonsterAt=currentDifficulty.monsterInitialDelay;encounterCount=0;monster=null;placeEchoes();placeFakeExits();anomalyUntil=0;nextAnomalyAt=random(8,16);cornerWatcher=null;nextCornerWatcherAt=random(4,8);torchFlickerPower=1;torchFlickerTimer=random(1.2,2.4);
     isPlaying = true;
     isPaused = false;
     doorAimed = false;
@@ -633,11 +729,43 @@
     startAudio(introMusic);
   }
 
-  function updateHUD(){
-    $('healthValue').textContent=String(Math.ceil(health));$('healthFill').style.width=Math.max(0,health)+'%';$('stopwatch').textContent=formatTime(elapsedSeconds);
-    if(currentDifficulty.id==='impossible'){objectiveStatus.hidden=false;objectiveLabel.textContent='JUST LIVE';echoCountLabel.hidden=true;exitTrace.hidden=true;}
-    else if(echoes.length){objectiveStatus.hidden=false;objectiveLabel.textContent='OPTIONAL · FIND 3 ECHOES';echoCountLabel.hidden=false;echoCountLabel.textContent=echoesCollected+' / '+OPTIONAL_ECHO_COUNT;const ready=echoesCollected>=OPTIONAL_ECHO_COUNT;exitTrace.hidden=!ready;if(ready){const b=normalizeAngle(Math.atan2(exitDoor.y-player.y,exitDoor.x-player.x)-player.angle),d=Math.abs(b)<.38?'AHEAD':Math.abs(b)>2.76?'BEHIND':(b<0?'LEFT':'RIGHT'),dist=Math.round(Math.hypot(exitDoor.x-player.x,exitDoor.y-player.y));exitTrace.textContent='EXIT TRACE · '+d+' · ABOUT '+dist+'M';}}
-    else{objectiveStatus.hidden=true;exitTrace.hidden=true;}
+  function updateHUD() {
+    $('healthValue').textContent = String(Math.ceil(health));
+    $('healthFill').style.width = Math.max(0, health) + '%';
+    $('stopwatch').textContent = formatTime(elapsedSeconds);
+    if (currentDifficulty.id === 'impossible') {
+      objectiveStatus.hidden = false;
+      objectiveLabel.textContent = 'JUST LIVE';
+      echoCountLabel.hidden = true;
+      exitTrace.hidden = true;
+      return;
+    }
+    if (!echoes.length) {
+      objectiveStatus.hidden = true;
+      exitTrace.hidden = true;
+      return;
+    }
+    objectiveStatus.hidden = false;
+    objectiveLabel.textContent = 'OPTIONAL · FIND 3 ECHOES';
+    echoCountLabel.hidden = false;
+    echoCountLabel.textContent = echoesCollected + ' / ' + OPTIONAL_ECHO_COUNT;
+    exitTrace.hidden = false;
+    if (echoesCollected < OPTIONAL_ECHO_COUNT) {
+      const remaining = echoes.filter(e => !e.collected);
+      const nearest = remaining.reduce((best, e) =>
+        !best || Math.hypot(e.x - player.x, e.y - player.y) < Math.hypot(best.x - player.x, best.y - player.y) ? e : best, null);
+      if (nearest) {
+        const bearing = normalizeAngle(Math.atan2(nearest.y - player.y, nearest.x - player.x) - player.angle);
+        const direction = Math.abs(bearing) < .38 ? 'AHEAD' : Math.abs(bearing) > 2.76 ? 'BEHIND' : (bearing < 0 ? 'LEFT' : 'RIGHT');
+        const distance = Math.round(Math.hypot(nearest.x - player.x, nearest.y - player.y));
+        exitTrace.textContent = 'ECHO SIGNAL · ' + direction + ' · ABOUT ' + distance + 'M';
+      }
+    } else {
+      const bearing = normalizeAngle(Math.atan2(exitDoor.y - player.y, exitDoor.x - player.x) - player.angle);
+      const direction = Math.abs(bearing) < .38 ? 'AHEAD' : Math.abs(bearing) > 2.76 ? 'BEHIND' : (bearing < 0 ? 'LEFT' : 'RIGHT');
+      const distance = Math.round(Math.hypot(exitDoor.x - player.x, exitDoor.y - player.y));
+      exitTrace.textContent = 'EXIT TRACE · ' + direction + ' · ABOUT ' + distance + 'M';
+    }
   }
 
   function collectEchoes() {
@@ -651,25 +779,43 @@
     }
   }
 
-  function spawnMonster() {
-    // Search a short distance ahead for an open tile so the shadow never spawns inside a wall.
-    const angles = [0, .14, -.14];
-    let position = null;
-    for (const offset of angles) {
-      const angle = player.angle + offset;
-      for (let d = 3.6; d >= 2.4; d -= .3) {
-        const x = player.x + Math.cos(angle) * d;
-        const y = player.y + Math.sin(angle) * d;
-        if (!isWall(x, y) && !isWall(x + .2, y) && !isWall(x - .2, y) && !isWall(x, y + .2) && !isWall(x, y - .2) && lineOfSight(x, y)) {
-          position = { x, y }; break;
-        }
+  function getNearbyOpenCells(minSteps, maxSteps) {
+    const startX = Math.floor(player.x), startY = Math.floor(player.y);
+    const queue = [{ x: startX, y: startY, steps: 0 }];
+    const visited = new Set([startX + ',' + startY]);
+    const found = [];
+    for (let i = 0; i < queue.length; i++) {
+      const cell = queue[i];
+      if (cell.steps >= minSteps) {
+        found.push({ x: cell.x + .5, y: cell.y + .5, steps: cell.steps });
       }
-      if (position) break;
+      if (cell.steps >= maxSteps) continue;
+      for (const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1]]) {
+        const nx = cell.x + dx, ny = cell.y + dy, key = nx + ',' + ny;
+        if (visited.has(key) || !map[ny] || map[ny][nx] !== 0) continue;
+        visited.add(key);
+        queue.push({ x: nx, y: ny, steps: cell.steps + 1 });
+      }
     }
-    if (!position) {
-      nextMonsterAt = elapsedSeconds + getMonsterInterval();
+    return found;
+  }
+
+  function spawnMonster() {
+    // Pick a reachable corridor tile 3–9 steps away. Prefer a visible spot in front,
+    // but never let one awkward maze turn cancel the encounter.
+    const candidates = getNearbyOpenCells(3, 9).filter(p => {
+      const distance = Math.hypot(p.x - player.x, p.y - player.y);
+      return distance >= 2.7 && distance <= 9.5 &&
+        Math.hypot(p.x - exitDoor.x, p.y - exitDoor.y) > 2.5;
+    });
+    const visible = candidates.filter(p => lineOfSight(p.x, p.y));
+    const forward = visible.filter(p => Math.abs(getObjectView(p).angle) < 1.15);
+    const pool = forward.length ? forward : (visible.length ? visible : candidates);
+    if (!pool.length) {
+      nextMonsterAt = elapsedSeconds + 3.5;
       return;
     }
+    const position = pool[Math.floor(Math.random() * pool.length)];
     monster = { x: position.x, y: position.y, active: true, elapsed: 0, escapeTime: 0, closeHit: false };
     encounterCount++;
     playMonsterSound();
@@ -846,10 +992,8 @@
   });
   document.addEventListener('mousemove', event => {
     if (!pointerLocked || !isPlaying || isPaused) return;
-    const mouseX = Math.max(-80, Math.min(80, event.movementX));
-    const mouseY = Math.max(-80, Math.min(80, event.movementY));
-    player.angle += mouseX * MOUSE_LOOK_SENSITIVITY;
-    player.pitch = Math.max(-.72, Math.min(.72, player.pitch - mouseY * MOUSE_PITCH_SENSITIVITY));
+    player.angle += event.movementX * (MOUSE_LOOK_SENSITIVITY * 1.12);
+    player.pitch = Math.max(-.72, Math.min(.72, player.pitch - event.movementY * MOUSE_PITCH_SENSITIVITY));
   });
 
   // Mobile movement joystick.
