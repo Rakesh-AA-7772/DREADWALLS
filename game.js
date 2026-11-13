@@ -82,7 +82,7 @@
   let echoes = [];
   let echoesCollected=0;
   let loadingTimer=null, fakeDoorTimer=null;
-  let torchOn=true, resumeMusicAfterPause=false;
+  let torchOn=true, resumeMusicAfterPause=false, ignorePointerUnlockUntil=0;
   let anomalyUntil=0, nextAnomalyAt=48;
   let torchFlickerTimer=2, torchFlickerPower=1;
   let doorAimed = false;
@@ -173,7 +173,7 @@
   function openSettings(){syncSettingsUI();settingsModal.classList.add('visible');settingsModal.setAttribute('aria-hidden','false');}
   function closeSettings(){settingsModal.classList.remove('visible');settingsModal.setAttribute('aria-hidden','true');}
   function updateTorchPresentation(){gameScreen.classList.toggle('torch-off',!torchOn);torchButton.setAttribute('aria-pressed',String(torchOn));torchButton.innerHTML='<span class="torch-icon">◉</span><span class="torch-label">TORCH '+(torchOn?'ON':'OFF')+'</span><small>L</small>';gameScreen.style.setProperty('--torch-power',String(torchOn?torchFlickerPower:0));}
-  function toggleTorch(){if(!isPlaying||isPaused||screen!=='game')return;torchOn=!torchOn;updateTorchPresentation();}
+  function toggleTorch(){if(!isPlaying||isPaused||screen!=='game')return;torchOn=!torchOn;updateTorchPresentation();if(!mobile&&hadPointerLock&&!pointerLocked&&canvas.requestPointerLock){try{canvas.requestPointerLock();}catch(_){}}}
   function random(min, max) { return min + Math.random() * (max - min); }
   function normalizeAngle(angle) {
     while (angle > Math.PI) angle -= Math.PI * 2;
@@ -1011,7 +1011,7 @@
   document.addEventListener('pointerlockchange', () => {
     pointerLocked = document.pointerLockElement === canvas;
     if (pointerLocked) hadPointerLock = true;
-    if (!mobile && hadPointerLock && isPlaying && !pointerLocked && !isPaused && screen === 'game') {
+    if (!mobile && hadPointerLock && isPlaying && !pointerLocked && !isPaused && screen === 'game' && performance.now() > ignorePointerUnlockUntil) {
       pauseGame();
     }
   });
@@ -1090,6 +1090,8 @@
   $('leaveButton').addEventListener('click', finishAtDoor);
   $('stayButton').addEventListener('click', () => { isPaused = false; setScreen('game'); if (!mobile && canvas.requestPointerLock) { try { canvas.requestPointerLock(); } catch (_) {} } });
   $('sacrificeButton').addEventListener('click', () => {}); // Reserved for a future chapter.
+  $('pauseButton').addEventListener('pointerdown',()=>{ignorePointerUnlockUntil=performance.now()+900;});
+  torchButton.addEventListener('pointerdown',()=>{ignorePointerUnlockUntil=performance.now()+900;});
   $('pauseButton').addEventListener('click',pauseGame);torchButton.addEventListener('click',toggleTorch);
   $('resumeButton').addEventListener('click',resumeGame);$('pauseSettingsButton').addEventListener('click',openSettings);
   $('closeSettingsButton').addEventListener('click',closeSettings);$('settingsBackButton').addEventListener('click',closeSettings);
