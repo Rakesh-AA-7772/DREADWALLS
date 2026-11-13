@@ -389,7 +389,8 @@
     } else if (elapsedSeconds >= nextCornerWatcherAt) {
       const corners = getNearbyOpenCells(3, 11).filter(p => {
         const distance = Math.hypot(p.x - player.x, p.y - player.y);
-        if (distance < 3 || distance > 10 || lineOfSight(p.x, p.y)) return false;
+        const view = getObjectView(p);
+        if (distance < 3 || distance > 10 || Math.abs(view.angle) > FOV * .82 || lineOfSight(p.x, p.y)) return false;
         const wallSides = [[.8,0],[-.8,0],[0,.8],[0,-.8]]
           .filter(([dx,dy]) => isWall(p.x + dx, p.y + dy)).length;
         return wallSides >= 2;
