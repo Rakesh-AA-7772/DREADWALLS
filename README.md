@@ -43,3 +43,12 @@ The stopwatch starts when PLAY is selected and stops when the run ends. The Abou
 The game stops `into.mp3` immediately when a level is selected, stays silent during the 2.4-second loading screen, then starts `game.mp3` when gameplay begins. `monster.mp3` plays only when a visible monster spawns, `door.mp3` plays on door interaction, `over.mp3` loops while the ending text is visible, and `random.mp3` plays at random intervals in Impossible. `footsteps.mp3` plays only while the player moves. `floor.jpg` textures the floor. The moon rendering has been removed to keep the scene clean and responsive. Browsers may block audio autoplay until the first click/tap; selecting a level provides the required user interaction.
 
 The Echo orbs, monster silhouettes, corner eye and visual anomalies are drawn in code and require no new files. Wall textures are cached at a reduced render size and the ray-strip count is tuned for smoother camera response. See `ASSETS.txt` for the existing image/audio files; no additional assets are required for this upgrade.
+
+
+## Phase 1 and 2 upgrades
+
+- The shadow follows corridor routes using a lightweight cached maze path, pauses when directly observed, and advances when outside the player's view.
+- Medium and Impossible can produce brief physical wall-corner eye sightings; Impossible retains its stronger glitches, random audio events and torch flicker.
+- A foreground hand-held torch sways slightly while walking. Press **L** or use the HUD torch button in every difficulty to toggle its beam. In Impossible, the rendered light and torch presentation pulse together during flickers.
+- The pause screen keeps the current corridor behind the overlay and provides Resume, Settings, Home and Retry. Settings persist locally and include master/music/effects volume, look sensitivity and graphics quality.
+- Death and victory screens provide retry and main-menu actions. Settings are stored in this browser/device only.

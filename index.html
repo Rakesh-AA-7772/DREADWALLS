@@ -46,12 +46,12 @@
         </div>
         <div class="about-copy">
           <p class="about-lead">There is no outside on the map. Only another corridor.</p>
-          <p>Choose your descent: Easy is a short route with no monster, Medium is a larger maze with a manageable shadow and optional Echo clues, and Impossible hides one real exit among several doors while the building glitches around you.</p>
+          <p>Choose your descent: Easy is a short route without a monster, Medium adds a stalking presence and optional Echo clues, and Impossible makes the building itself feel unreliable. Press L or tap the torch control to switch the light off or on in every level.</p>
           <div class="controls-grid">
             <div><b>MOVE</b><span>W A S D</span></div>
             <div><b>LOOK</b><span>MOUSE / TOUCH</span></div>
             <div><b>OPEN EXIT</b><span>CLICK / E</span></div>
-            <div><b>PAUSE</b><span>ESC</span></div>
+            <div><b>PAUSE</b><span>ESC</span></div><div><b>TORCH</b><span>L / TORCH BUTTON</span></div>
           </div>
         </div>
         <div class="history-wrap">
@@ -81,6 +81,29 @@
     <!-- GAME VIEW -->
     <section id="gameScreen" class="game-screen screen" aria-label="DREADWALLS gameplay">
       <canvas id="game" aria-label="First-person game view"></canvas>
+      <div id="torchHand" class="torch-hand" aria-hidden="true"><svg viewBox="0 0 440 360" role="presentation" focusable="false">
+        <defs>
+          <linearGradient id="torchMetal" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#62666a"/><stop offset=".18" stop-color="#171a1d"/><stop offset=".52" stop-color="#07090b"/><stop offset=".78" stop-color="#303438"/><stop offset="1" stop-color="#090a0c"/></linearGradient>
+          <linearGradient id="torchRim" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#a4a7a5"/><stop offset=".18" stop-color="#353a3d"/><stop offset=".62" stop-color="#080a0c"/><stop offset="1" stop-color="#55595a"/></linearGradient>
+          <linearGradient id="skinTone" x1=".05" y1=".05" x2=".92" y2=".9"><stop offset="0" stop-color="#d3a17c"/><stop offset=".34" stop-color="#98694e"/><stop offset=".72" stop-color="#5b392d"/><stop offset="1" stop-color="#291b19"/></linearGradient>
+          <linearGradient id="skinLight" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#e0b18c"/><stop offset=".55" stop-color="#9b6c50"/><stop offset="1" stop-color="#4a3028"/></linearGradient>
+          <radialGradient id="torchLens"><stop offset="0" stop-color="#fff8d9"/><stop offset=".22" stop-color="#f4e6b3"/><stop offset=".48" stop-color="#9a9d92"/><stop offset="1" stop-color="#15191a"/></radialGradient>
+        </defs>
+        <ellipse cx="150" cy="105" rx="82" ry="67" fill="#fff0c7" opacity=".13" class="torch-bloom"/>
+        <path d="M440 360H210c12-35 29-67 53-92 23-25 51-34 83-21l94 35z" fill="#08090a" opacity=".72"/>
+        <path d="M440 360H237c17-43 37-79 70-103 26-19 57-15 83 1l50 33z" fill="url(#skinTone)" stroke="#261b17" stroke-width="5"/>
+        <g transform="rotate(-43 217 179)">
+          <path d="M111 74l30-27 176 0 30 25-22 27-187 0z" fill="url(#torchRim)" stroke="#090b0d" stroke-width="6"/><path d="M139 77h180v26H139z" fill="#090c0e"/>
+          <ellipse cx="133" cy="87" rx="24" ry="42" fill="url(#torchRim)" stroke="#080a0b" stroke-width="6"/><ellipse cx="127" cy="87" rx="16" ry="31" fill="url(#torchLens)" stroke="#25292a" stroke-width="5"/>
+          <path d="M156 56l21-13h124l20 17v53l-20 14H177l-21-15z" fill="url(#torchMetal)" stroke="#050607" stroke-width="6"/>
+          <path d="M180 59v62M193 56v67M286 56v67" stroke="#777c7e" stroke-opacity=".35" stroke-width="3"/><path d="M208 54v74M220 54v74M232 54v74" stroke="#050607" stroke-opacity=".8" stroke-width="4"/>
+          <path d="M172 63h145" stroke="#94999a" stroke-opacity=".35" stroke-width="2"/><rect x="308" y="65" width="33" height="48" rx="7" fill="#171b1d" stroke="#62676a" stroke-width="4"/>
+        </g>
+        <path d="M440 360H264c-4-24-1-51 13-73 13-20 30-38 53-45 20-6 39 3 50 17 9 12 15 25 22 42l38 19z" fill="url(#skinTone)" stroke="#2c1e18" stroke-width="5"/>
+        <path d="M299 246c-17-17-16-38-1-52 14-13 35-10 48 7l27 35c10 13 9 30-4 40-13 10-30 6-42-8z" fill="url(#skinLight)" stroke="#3e2921" stroke-width="4"/>
+        <path d="M325 212c-8-9-7-22 2-29 9-7 21-4 28 5l21 27c7 9 6 20-3 26-9 7-20 3-27-5zM351 237c-10-8-10-20-2-27 8-7 19-5 27 4l20 23c7 8 5 19-3 25-8 7-18 3-26-4zM279 266c-7-11-2-23 9-27 10-4 20 2 26 13l17 30c5 10 2 21-8 26-11 5-21-1-27-11z" fill="url(#skinTone)" stroke="#35231d" stroke-width="3"/>
+        <path d="M306 280c11 8 20 19 22 32M338 260c9 11 15 24 17 38M365 263c7 12 11 23 12 34" fill="none" stroke="#e1b28c" stroke-opacity=".32" stroke-width="4" stroke-linecap="round"/>
+      </svg></div>
       <div class="game-vignette"></div>
       <div class="game-hud">
         <div class="hud-top">
@@ -89,13 +112,14 @@
             <div class="health-track"><div id="healthFill" class="health-fill"></div></div>
           </div>
           <div class="timer-panel"><span class="hud-label">TIME INSIDE</span><strong id="stopwatch">00:00</strong></div>
+          <button id="torchButton" class="torch-button" type="button" aria-label="Toggle torch (L)" aria-pressed="true"><span class="torch-icon">◉</span><span class="torch-label">TORCH ON</span><small>L</small></button>
           <button id="pauseButton" class="pause-button" aria-label="Pause game">Ⅱ</button>
         </div>
         <div id="crosshair" class="crosshair" aria-hidden="true"><i></i><b></b></div>
         <div id="objectiveStatus" class="objective-status"><span id="objectiveLabel">OPTIONAL · FIND 3 ECHOES</span><strong id="echoCount">0 / 3</strong></div>
         <div id="exitTrace" class="exit-trace" hidden></div>
         <div id="doorPrompt" class="door-prompt">EXIT FOUND — CLICK OR PRESS E</div>
-        <div id="gameHint" class="game-hint">WASD MOVE <span>·</span> MOUSE LOOK <span>·</span> E INTERACT</div>
+        <div id="gameHint" class="game-hint">WASD MOVE <span>·</span> MOUSE LOOK <span>·</span> E INTERACT <span>·</span> L TORCH</div>
         <div id="mobileControls" class="mobile-controls">
           <div id="joystick" class="joystick"><div id="stick" class="stick"></div></div>
           <div id="lookZone" class="look-zone"><span>DRAG TO LOOK</span></div>
@@ -116,22 +140,30 @@
       </div>
     </section>
 
-    <section id="pauseModal" class="modal-screen" aria-hidden="true">
-      <div class="modal-card pause-card">
-        <div class="eyebrow">TEMPORARY STILLNESS</div>
-        <h2>DON'T GET<br><span>COMFORTABLE.</span></h2>
-        <button id="resumeButton" class="action-button primary">RETURN TO THE BUILDING <span>↗</span></button>
-        <button id="homeButton" class="text-button">ABANDON THIS RUN</button>
+    <section id="pauseModal" class="modal-screen pause-overlay" aria-hidden="true">
+      <div class="pause-panel"><div class="pause-eyebrow">DREADWALLS / TEMPORARY STILLNESS</div><h2>GAME <span>PAUSED</span></h2>
+        <div class="pause-resume-wrap"><button id="resumeButton" class="pause-action pause-resume">RESUME</button></div>
+        <button id="pauseSettingsButton" class="pause-action pause-settings">SETTINGS</button>
+        <div class="pause-secondary"><button id="homeButton" class="pause-action">HOME</button><button id="retryButton" class="pause-action">RETRY</button></div>
+        <div class="pause-footer"><span>ESC</span> RETURN TO THE BUILDING <i>·</i> <span>L</span> TORCH ON / OFF</div>
       </div>
     </section>
+    <section id="settingsModal" class="modal-screen settings-modal" aria-hidden="true"><div class="settings-card">
+      <div class="settings-heading"><div><div class="eyebrow">DREADWALLS / FIELD CONFIGURATION</div><h2>SETTINGS <span>/ SYSTEM</span></h2></div><button id="closeSettingsButton" class="close-button" aria-label="Close settings">×</button></div>
+      <div class="settings-group"><h3>AUDIO MIXER</h3>
+        <label class="setting-row" for="masterVolume"><span>MASTER VOLUME</span><output id="masterVolumeValue">85%</output></label><input id="masterVolume" class="setting-range" type="range" min="0" max="1" step=".05" value=".85">
+        <label class="setting-row" for="musicVolume"><span>MUSIC</span><output id="musicVolumeValue">55%</output></label><input id="musicVolume" class="setting-range" type="range" min="0" max="1" step=".05" value=".55">
+        <label class="setting-row" for="effectsVolume"><span>SOUND EFFECTS</span><output id="effectsVolumeValue">80%</output></label><input id="effectsVolume" class="setting-range" type="range" min="0" max="1" step=".05" value=".8">
+      </div>
+      <div class="settings-group"><h3>CONTROLS & DISPLAY</h3>
+        <label class="setting-row" for="lookSensitivity"><span>LOOK SENSITIVITY</span><output id="lookSensitivityValue">100%</output></label><input id="lookSensitivity" class="setting-range" type="range" min=".5" max="1.8" step=".1" value="1">
+        <label class="setting-row" for="graphicsQuality"><span>GRAPHICS QUALITY</span></label><select id="graphicsQuality" class="setting-select"><option value="high">HIGH · SHARPER IMAGE</option><option value="medium">MEDIUM · BALANCED</option><option value="low">LOW · SMOOTHER PERFORMANCE</option></select>
+      </div><button id="settingsBackButton" class="pause-action settings-back">BACK TO PAUSE</button>
+    </div></section>
 
-    <section id="deathScreen" class="black-screen" aria-hidden="true">
-      <div class="death-copy"><div class="eyebrow">DREADWALLS / RUN TERMINATED</div><h2>IT FOUND YOU.</h2><p>THE BUILDING IS QUIET AGAIN.</p></div>
-    </section>
-
-    <section id="endingScreen" class="black-screen" aria-hidden="true">
-      <div class="ending-copy" id="endingCopy">CONGRATS!<br>NOT ON LEAVING THE HOUSE,<br>BUT NOT BECOMING SOMETHINGS MEAL,<br>YES YOU WILL KNOW IT LATER,</div>
-    </section>
+    <section id="deathScreen" class="black-screen" aria-hidden="true"><div class="death-copy"><div class="eyebrow">DREADWALLS / RUN TERMINATED</div><h2>IT FOUND YOU.</h2><p>THE BUILDING IS QUIET AGAIN.</p><div class="end-actions"><button id="deathRetryButton" class="pause-action pause-resume">TRY AGAIN</button><button id="deathHomeButton" class="pause-action">MAIN MENU</button></div></div></section>
+    <section id="endingScreen" class="black-screen" aria-hidden="true"><div class="ending-copy" id="endingCopy">CONGRATS!<br>NOT ON LEAVING THE HOUSE,<br>BUT NOT BECOMING SOMETHINGS MEAL,<br>YES YOU WILL KNOW IT LATER,</div>
+      <div class="end-actions ending-actions"><button id="endingRetryButton" class="pause-action pause-resume">PLAY AGAIN</button><button id="endingHomeButton" class="pause-action">MAIN MENU</button></div></section>
   </main>
 
   <!-- Keep these filenames: add your audio files beside index.html. -->

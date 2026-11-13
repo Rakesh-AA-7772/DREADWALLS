@@ -36,8 +36,13 @@
   const objectiveLabel = $('objectiveLabel');
   const echoCountLabel = $('echoCount');
   const exitTrace = $('exitTrace');
+  const torchButton = $('torchButton');
+  const settingsModal = $('settingsModal');
 
   const HISTORY_KEY = 'dreadwalls.runHistory.v1';
+  const SETTINGS_KEY = 'dreadwalls.settings.v1';
+  const DEFAULT_SETTINGS = { masterVolume:.85,musicVolume:.55,effectsVolume:.8,lookSensitivity:1,graphicsQuality:'high' };
+  let settings = loadSettings();
   const OPTIONAL_ECHO_COUNT = 3;
   const DIFFICULTIES = {
     easy:{id:'easy',label:'EASY',mapSize:15,monsters:false,monsterInitialDelay:Infinity,monsterBaseInterval:Infinity,monsterMinInterval:Infinity,monsterSpeed:0,stareDamage:0,closeDamage:0,echoClues:false,torchFlicker:false,anomalies:false,fakeExitCount:0,playerSpeed:3.1},
@@ -77,6 +82,7 @@
   let echoes = [];
   let echoesCollected=0;
   let loadingTimer=null, fakeDoorTimer=null;
+  let torchOn=true, resumeMusicAfterPause=false;
   let anomalyUntil=0, nextAnomalyAt=48;
   let torchFlickerTimer=2, torchFlickerPower=1;
   let doorAimed = false;
@@ -135,13 +141,12 @@
   floorTexture.src = 'floor.jpg';
 
   function resize() {
-    const dpr = Math.min(window.devicePixelRatio || 1, mobile ? 1.15 : 1.5);
-    width = window.innerWidth;
-    height = window.innerHeight;
-    canvas.width = Math.floor(width * dpr);
-    canvas.height = Math.floor(height * dpr);
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    const floorResolutionDivisor = mobile ? 4 : 3;
+    const qualityScale=settings.graphicsQuality==='low'?.82:(settings.graphicsQuality==='medium'?.94:1);
+    const dpr=Math.min(window.devicePixelRatio||1,(mobile?1.15:1.5)*qualityScale);
+    width=window.innerWidth;height=window.innerHeight;
+    canvas.width=Math.floor(width*dpr);canvas.height=Math.floor(height*dpr);
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    const floorResolutionDivisor=settings.graphicsQuality==='low'?5:(settings.graphicsQuality==='medium'?4:(mobile?4:3));
     floorBuffer.width = Math.max(1, Math.ceil(width / floorResolutionDivisor));
     floorBuffer.height = Math.max(1, Math.ceil(height / floorResolutionDivisor));
     floorBufferImage = floorBufferCtx.createImageData(floorBuffer.width, floorBuffer.height);
@@ -152,6 +157,23 @@
   });
   resize();
 
+  function loadSettings() {
+    try {
+      const saved=JSON.parse(localStorage.getItem(SETTINGS_KEY)||'{}');
+      return {masterVolume:Number.isFinite(saved.masterVolume)?Math.max(0,Math.min(1,saved.masterVolume)):DEFAULT_SETTINGS.masterVolume,
+        musicVolume:Number.isFinite(saved.musicVolume)?Math.max(0,Math.min(1,saved.musicVolume)):DEFAULT_SETTINGS.musicVolume,
+        effectsVolume:Number.isFinite(saved.effectsVolume)?Math.max(0,Math.min(1,saved.effectsVolume)):DEFAULT_SETTINGS.effectsVolume,
+        lookSensitivity:Number.isFinite(saved.lookSensitivity)?Math.max(.5,Math.min(1.8,saved.lookSensitivity)):DEFAULT_SETTINGS.lookSensitivity,
+        graphicsQuality:['high','medium','low'].includes(saved.graphicsQuality)?saved.graphicsQuality:DEFAULT_SETTINGS.graphicsQuality};
+    } catch (_) { return {...DEFAULT_SETTINGS}; }
+  }
+  function saveSettings(){try{localStorage.setItem(SETTINGS_KEY,JSON.stringify(settings));}catch(_){}}
+  function updateSetting(key,value){settings[key]=value;saveSettings();if(['masterVolume','musicVolume','effectsVolume'].includes(key))applyAudioSettings();if(key==='graphicsQuality')resize();syncSettingsUI();}
+  function syncSettingsUI(){for(const key of ['masterVolume','musicVolume','effectsVolume','lookSensitivity']){const input=$(key),output=$(key+'Value');if(!input||!output)continue;input.value=String(settings[key]);output.textContent=Math.round(settings[key]*100)+'%;'}$('graphicsQuality').value=settings.graphicsQuality;}
+  function openSettings(){syncSettingsUI();settingsModal.classList.add('visible');settingsModal.setAttribute('aria-hidden','false');}
+  function closeSettings(){settingsModal.classList.remove('visible');settingsModal.setAttribute('aria-hidden','true');}
+  function updateTorchPresentation(){gameScreen.classList.toggle('torch-off',!torchOn);torchButton.setAttribute('aria-pressed',String(torchOn));torchButton.innerHTML='<span class="torch-icon">◉</span><span class="torch-label">TORCH '+(torchOn?'ON':'OFF')+'</span><small>L</small>';gameScreen.style.setProperty('--torch-power',String(torchOn?torchFlickerPower:0));}
+  function toggleTorch(){if(!isPlaying||isPaused||screen!=='game')return;torchOn=!torchOn;updateTorchPresentation();}
   function random(min, max) { return min + Math.random() * (max - min); }
   function normalizeAngle(angle) {
     while (angle > Math.PI) angle -= Math.PI * 2;
@@ -350,61 +372,34 @@
     ctx.fillStyle = edge; ctx.fillRect(0, 0, width, height);
   }
 
-  function updateImpossibleEffects(dt) {
-    if (!currentDifficulty.anomalies) {
-      torchFlickerPower = 1;
-      anomalyUntil = 0;
-      cornerWatcher = null;
-      return;
-    }
-    torchFlickerTimer -= dt;
-    if (torchFlickerTimer <= 0) {
-      if (torchFlickerPower > .72) {
-        torchFlickerPower = random(.10, .28);
-        torchFlickerTimer = random(.12, .30);
-      } else {
-        torchFlickerPower = random(.78, 1);
-        torchFlickerTimer = random(1.3, 3.8);
+  function updateImpossibleEffects(dt){
+    const impossible=currentDifficulty.anomalies;
+    if(impossible){
+      torchFlickerTimer-=dt;
+      if(torchFlickerTimer<=0){if(torchFlickerPower>.72){torchFlickerPower=random(.10,.28);torchFlickerTimer=random(.12,.30);}else{torchFlickerPower=random(.78,1);torchFlickerTimer=random(1.3,3.8);}}
+      if(elapsedSeconds>=nextAnomalyAt){anomalyUntil=elapsedSeconds+random(1.8,3.4);nextAnomalyAt=elapsedSeconds+random(18,30);}
+      if(elapsedSeconds>=nextRandomSoundAt){if(randomSound.paused||randomSound.ended)playAudioCue(randomSound,random(.42,.68));nextRandomSoundAt=elapsedSeconds+random(24,48);}
+    }else{torchFlickerPower=1;anomalyUntil=0;}
+    gameScreen.style.setProperty('--torch-power',String(torchOn?torchFlickerPower:0));
+    if(!currentDifficulty.monsters){cornerWatcher=null;return;}
+    if(cornerWatcher){
+      cornerWatcher.ttl-=dt;const view=getObjectView(cornerWatcher);
+      if(view.distance<2.35||(Math.abs(view.angle)<.22&&lineOfSight(cornerWatcher.x,cornerWatcher.y))||cornerWatcher.ttl<=0){
+        cornerWatcher=null;nextCornerWatcherAt=elapsedSeconds+(impossible?random(7,13):random(19,29));
       }
-    }
-    if (elapsedSeconds >= nextAnomalyAt) {
-      anomalyUntil = elapsedSeconds + random(1.8, 3.4);
-      nextAnomalyAt = elapsedSeconds + random(18, 30);
-    }
-
-    if (elapsedSeconds >= nextRandomSoundAt) {
-      if (randomSound.paused || randomSound.ended) playAudioCue(randomSound, random(.42, .68));
-      nextRandomSoundAt = elapsedSeconds + random(24, 48);
-    }
-
-    if (cornerWatcher) {
-      cornerWatcher.ttl -= dt;
-      const view = getObjectView(cornerWatcher);
-      const isClose = view.distance < 2.35;
-      const playerCaughtItsGaze = Math.abs(view.angle) < .22 && lineOfSight(cornerWatcher.x, cornerWatcher.y);
-      if (isClose || playerCaughtItsGaze || cornerWatcher.ttl <= 0) {
-        cornerWatcher = null;
-        nextCornerWatcherAt = elapsedSeconds + random(8, 14);
-      }
-    } else if (elapsedSeconds >= nextCornerWatcherAt) {
-      const corners = getNearbyOpenCells(3, 11).filter(p => {
-        const distance = Math.hypot(p.x - player.x, p.y - player.y);
-        const view = getObjectView(p);
-        if (distance < 3 || distance > 10 || Math.abs(view.angle) > FOV * .82 || lineOfSight(p.x, p.y)) return false;
-        const wallSides = [[.8,0],[-.8,0],[0,.8],[0,-.8]]
-          .filter(([dx,dy]) => isWall(p.x + dx, p.y + dy)).length;
-        return wallSides >= 2;
+    }else if(elapsedSeconds>=nextCornerWatcherAt){
+      const corners=getNearbyOpenCells(3,11).filter(p=>{
+        const distance=Math.hypot(p.x-player.x,p.y-player.y),view=getObjectView(p);
+        if(distance<3||distance>10||Math.abs(view.angle)>FOV*.82||lineOfSight(p.x,p.y))return false;
+        return [[.8,0],[-.8,0],[0,.8],[0,-.8]].filter(([dx,dy])=>isWall(p.x+dx,p.y+dy)).length>=2;
       });
-      if (corners.length) {
-        const p = corners[Math.floor(Math.random() * corners.length)];
-        cornerWatcher = { x:p.x, y:p.y, ttl:random(2.8, 5.2), height:random(.22, .68) };
-      }
-      nextCornerWatcherAt = elapsedSeconds + random(10, 17);
+      if(corners.length){const p=corners[Math.floor(Math.random()*corners.length)];cornerWatcher={x:p.x,y:p.y,ttl:impossible?random(2.8,5.2):random(1.5,2.8),height:random(.22,.68)};}
+      nextCornerWatcherAt=elapsedSeconds+(impossible?random(9,16):random(21,33));
     }
   }
   function drawImpossibleAnomaly(){if(!currentDifficulty.anomalies||elapsedSeconds>=anomalyUntil)return;const p=Math.max(0,anomalyUntil-elapsedSeconds),f=.45+Math.abs(Math.sin(elapsedSeconds*19))*.35,x=width*(.28+Math.sin(elapsedSeconds*2.7)*.18),h=Math.min(height*.82,height*(.48+f*.12)),w=h*.22;ctx.save();ctx.globalAlpha=Math.min(.52,p*.22)*f;ctx.fillStyle='#010102';ctx.shadowColor='rgba(160,35,42,.7)';ctx.shadowBlur=24;ctx.beginPath();ctx.ellipse(x,height*.5-h*.31,w*.24,h*.10,0,0,Math.PI*2);ctx.fill();ctx.beginPath();ctx.moveTo(x-w*.18,height*.5-h*.23);ctx.lineTo(x-w*.52,height*.5-h*.05);ctx.lineTo(x-w*.30,height*.5+h*.43);ctx.lineTo(x+w*.30,height*.5+h*.43);ctx.lineTo(x+w*.52,height*.5-h*.05);ctx.lineTo(x+w*.18,height*.5-h*.23);ctx.closePath();ctx.fill();ctx.globalAlpha=.08+f*.08;ctx.fillStyle='#d9c5c5';for(let i=0;i<4;i++){const y=(Math.abs(Math.sin(elapsedSeconds*11+i*7.3))*height)|0;ctx.fillRect(0,y,width,1+(i%2));}ctx.restore();} 
   function drawCornerWatcher(zBuffer, horizon) {
-    if (!currentDifficulty.anomalies || !cornerWatcher) return;
+    if (!currentDifficulty.monsters || !cornerWatcher) return;
     const view = getObjectView(cornerWatcher);
     if (view.distance < 2.3 || view.distance > 11 || Math.abs(view.angle) > FOV * .92) return;
 
@@ -550,7 +545,8 @@
         const source = (ty * floorTextureWidth + tx) * 4;
         const target = (rowIndex + px) * 4;
         const beam = Math.max(0, 1 - Math.abs(cameraX) * 0.95);
-        const brightness = Math.min(1, 0.28 + 0.72 * beam * Math.exp(-rowDistance * 0.11));
+        const power=torchOn?(currentDifficulty.torchFlicker?torchFlickerPower:1):0;
+        const brightness=torchOn?Math.min(1,.12+.88*beam*power*Math.exp(-rowDistance*.11)):Math.max(.025,.075*Math.exp(-rowDistance*.08));
         pixels[target] = floorTexturePixels[source] * brightness;
         pixels[target + 1] = floorTexturePixels[source + 1] * brightness;
         pixels[target + 2] = floorTexturePixels[source + 2] * brightness;
@@ -580,7 +576,8 @@
     ctx.fillRect(0, Math.max(0, horizon), width, height - Math.max(0, horizon));
     drawTexturedFloor(horizon);
 
-    const columns = Math.ceil(width / (mobile ? 3 : 3.5));
+    const stripWidth=settings.graphicsQuality==='low'?5:(settings.graphicsQuality==='medium'?4:(mobile?3.5:3));
+    const columns=Math.ceil(width/stripWidth);
     const strip = width / columns;
     const zBuffer = new Float32Array(columns);
     for (let i = 0; i < columns; i++) {
@@ -597,7 +594,7 @@
       const beamAngle = Math.abs(normalizeAngle(rayAngle - player.angle));
       const beam = Math.max(0, 1 - beamAngle / .76);
       const range = Math.max(0, 1 - distance / 5.8);
-      const tp=currentDifficulty.torchFlicker?torchFlickerPower:1;
+      const tp=torchOn?(currentDifficulty.torchFlicker?torchFlickerPower:1):0;
       const illumination=Math.pow(beam,1.65)*Math.pow(range,1.2)*tp;
       const sideShade = ray.side ? .66 : 1;
 
@@ -609,7 +606,7 @@
         ctx.fillStyle = `rgba(0,0,0,${Math.max(.05, .965 - illumination * sideShade)})`;
         ctx.fillRect(i * strip, top, strip + 1, wallHeight);
       } else {
-        const light = Math.floor(22 + illumination * 158);
+        const light=torchOn?Math.floor(8+illumination*154):4;
         ctx.fillStyle = `rgb(${Math.floor(light * .66 * sideShade)},${Math.floor(light * .78 * sideShade)},${Math.floor(light * .88 * sideShade)})`;
         ctx.fillRect(i * strip, top, strip + 1, wallHeight);
       }
@@ -617,12 +614,13 @@
 
     // A low-power flashlight hotspot and broad darkness at the edges.
     const glow = ctx.createRadialGradient(width * .5, horizon + height * .1, 1, width * .5, horizon + height * .18, height * .58);
-    const tp=currentDifficulty.torchFlicker?torchFlickerPower:1;
+    const tp=torchOn?(currentDifficulty.torchFlicker?torchFlickerPower:1):0;
     glow.addColorStop(0,'rgba(180,210,230,'+(.17*tp)+')');
     glow.addColorStop(.3,'rgba(105,145,165,'+(.065*tp)+')');
     glow.addColorStop(1, 'rgba(0,0,0,0)');
-    ctx.fillStyle = glow;
-    ctx.fillRect(0, Math.max(0, horizon), width, height - Math.max(0, horizon));
+    ctx.fillStyle=glow;
+    ctx.fillRect(0,Math.max(0,horizon),width,height-Math.max(0,horizon));
+    if(!torchOn){ctx.fillStyle='rgba(0,0,0,.22)';ctx.fillRect(0,0,width,height);}
 
     for(const door of exitDoors)drawDoorSprite(door,zBuffer,strip,horizon);
 
@@ -647,7 +645,7 @@
       if (audio !== track) { audio.pause(); audio.currentTime = 0; }
     });
     if (!track) return;
-    track.volume = .55;
+    track.volume=settings.masterVolume*settings.musicVolume;
     const promise = track.play();
     if (promise && typeof promise.catch === 'function') promise.catch(() => {});
   }
@@ -656,8 +654,9 @@
     try {
       audio.pause();
       audio.currentTime = 0;
-      audio.volume = volume;
-      audio.loop = loop;
+      audio._dreadBaseVolume=volume;
+      audio.volume=volume*settings.masterVolume*settings.effectsVolume;
+      audio.loop=loop;
       const promise = audio.play();
       if (promise && typeof promise.catch === 'function') promise.catch(() => {});
     } catch (_) {}
@@ -673,16 +672,15 @@
   }
   function syncFootsteps(moving, movementSpeed) {
     if (!moving || !isPlaying || isPaused) { stopFootsteps(); return; }
-    footstepsAudio.volume = 0.52;
+    footstepsAudio.volume=.52*settings.masterVolume*settings.effectsVolume;
     footstepsAudio.playbackRate = Math.max(0.72, Math.min(1.22, movementSpeed / player.speed));
     if (footstepsAudio.paused) {
       const promise = footstepsAudio.play();
       if (promise && typeof promise.catch === 'function') promise.catch(() => {});
     }
   }
-  function stopAllAudio() {
-    [introMusic, gameMusic, monsterSound, footstepsAudio, doorSound, overSound, randomSound].forEach(stopAudioCue);
-  }
+  function applyAudioSettings(){introMusic.volume=gameMusic.volume=settings.masterVolume*settings.musicVolume;[monsterSound,footstepsAudio,doorSound,overSound,randomSound].forEach(a=>{if(a._dreadBaseVolume!=null)a.volume=a._dreadBaseVolume*settings.masterVolume*settings.effectsVolume;});}
+  function stopAllAudio(){[introMusic,gameMusic,monsterSound,footstepsAudio,doorSound,overSound,randomSound].forEach(stopAudioCue);}
 
   function getHistory() {
     try {
@@ -725,12 +723,11 @@
 
   function setScreen(next) {
     screen = next;
-    dashboard.classList.toggle('active', next === 'home' || next === 'about');
-    gameScreen.classList.toggle('active', next === 'game' || next === 'paused' || next === 'exitOptions');
-    deathScreen.classList.toggle('visible', next === 'dead');
-    endingScreen.classList.toggle('visible', next === 'ending');
-    exitModal.classList.toggle('visible', next === 'exitOptions');
-    pauseModal.classList.toggle('visible', next === 'paused');
+    dashboard.classList.toggle('active',next==='home'||next==='about');
+    gameScreen.classList.toggle('active',next==='game'||next==='paused'||next==='exitOptions');
+    deathScreen.classList.toggle('visible',next==='dead');endingScreen.classList.toggle('visible',next==='ending');
+    exitModal.classList.toggle('visible',next==='exitOptions');pauseModal.classList.toggle('visible',next==='paused');
+    pauseModal.setAttribute('aria-hidden',String(next!=='paused'));
   }
 
   function showAbout(open) {
@@ -750,7 +747,7 @@
     elapsedSeconds = 0;
     startedAt = performance.now();
     runRecorded = false;
-    nextMonsterAt=currentDifficulty.monsterInitialDelay;encounterCount=0;monster=null;placeEchoes();placeFakeExits();anomalyUntil=0;nextAnomalyAt=random(8,16);cornerWatcher=null;nextCornerWatcherAt=random(4,8);nextRandomSoundAt=currentDifficulty.anomalies?random(16,28):Infinity;torchFlickerPower=1;torchFlickerTimer=random(1.2,2.4);
+    nextMonsterAt=currentDifficulty.monsterInitialDelay;encounterCount=0;monster=null;placeEchoes();placeFakeExits();anomalyUntil=0;nextAnomalyAt=random(8,16);cornerWatcher=null;nextCornerWatcherAt=currentDifficulty.id==='impossible'?random(4,8):(currentDifficulty.id==='medium'?random(14,22):Infinity);nextRandomSoundAt=currentDifficulty.anomalies?random(16,28):Infinity;torchFlickerPower=1;torchFlickerTimer=random(1.2,2.4);torchOn=true;updateTorchPresentation();
     isPlaying = true;
     isPaused = false;
     doorAimed = false;
@@ -772,11 +769,8 @@
 
   function returnHome() {
     isPlaying = false;
-    isPaused = false;
-    monster = null;
-    stopAllAudio();
-    if (document.pointerLockElement) document.exitPointerLock();
-    setScreen('home');
+    isPaused=false;monster=null;closeSettings();if(deathTimer)clearTimeout(deathTimer);if(endingTimer)clearTimeout(endingTimer);
+    stopAllAudio();if(document.pointerLockElement)document.exitPointerLock();setScreen('home');
     showAbout(false);
     startAudio(introMusic);
   }
@@ -870,47 +864,37 @@
     monster = {
       x: position.x, y: position.y, active: true,
       elapsed: 0, escapeTime: 0, closeHit: false,
-      revealTime: 4.5
+      revealTime:4.5,pathTimer:0,waypoint:null,waypointTarget:'',gazeHold:0
     };
     encounterCount++;
     playMonsterSound();
   }
 
-  function updateMonster(dt, forward, strafe) {
-    if (!monster || !monster.active) return;
-    monster.elapsed += dt;
-    const view = getObjectView(monster);
-    const visible = view.distance < 10 && Math.abs(view.angle) < .24 && lineOfSight(monster.x, monster.y);
-    if (visible) {
-      health=Math.max(0,health-currentDifficulty.stareDamage*dt);
-    }
-
-    const dx = player.x - monster.x;
-    const dy = player.y - monster.y;
-    const distance = Math.max(.001, Math.hypot(dx, dy));
-    const escalation = Math.min(0.12, Math.max(0, encounterCount - 1) * 0.015);
-    const speed=(visible?.38+escalation*.35:(monster.elapsed<3.5?.48:.82+escalation))*currentDifficulty.monsterSpeed;
-    const mx = (dx / distance) * speed * dt;
-    const my = (dy / distance) * speed * dt;
-    if (!isWall(monster.x + mx, monster.y)) monster.x += mx;
-    if (!isWall(monster.x, monster.y + my)) monster.y += my;
-
-    if (distance < .85 && !monster.closeHit) {
-      health=Math.max(0,health-currentDifficulty.closeDamage);
-      monster.closeHit = true;
-    }
-
-    const isMoving = Math.abs(forward) + Math.abs(strafe) > .35;
-    const lookingAway = Math.abs(view.angle) > .55;
-    if (lookingAway && isMoving && distance > 3.4) monster.escapeTime += dt;
-    else monster.escapeTime = Math.max(0, monster.escapeTime - dt * .35);
-
-    if (monster.revealTime > 0) monster.revealTime = Math.max(0, monster.revealTime - dt);
-    if ((monster.escapeTime > 4.2 && monster.revealTime <= 0) || monster.elapsed > 24 || distance < .5) {
-      monster = null;
-      nextMonsterAt = elapsedSeconds + getMonsterInterval();
-    }
-    if (health <= 0) endRunByDeath();
+  function findMonsterWaypoint(){
+    const sx=Math.floor(monster.x),sy=Math.floor(monster.y),tx=Math.floor(player.x),ty=Math.floor(player.y),startKey=sx+','+sy,targetKey=tx+','+ty;
+    if(startKey===targetKey)return {x:player.x,y:player.y};
+    const queue=[[sx,sy]],prev=new Map([[startKey,null]]);
+    for(let i=0;i<queue.length;i++){const[x,y]=queue[i];if(x===tx&&y===ty)break;for(const[dx,dy]of[[1,0],[-1,0],[0,1],[0,-1]]){const nx=x+dx,ny=y+dy,key=nx+','+ny;if(prev.has(key)||!map[ny]||map[ny][nx]!==0)continue;prev.set(key,x+','+y);queue.push([nx,ny]);}}
+    if(!prev.has(targetKey))return {x:player.x,y:player.y};
+    let cursor=targetKey,parent=prev.get(cursor);while(parent&&parent!==startKey){cursor=parent;parent=prev.get(cursor);}
+    const[wx,wy]=cursor.split(',').map(Number);return {x:wx+.5,y:wy+.5};
+  }
+  function updateMonster(dt,forward,strafe){
+    if(!monster||!monster.active)return;monster.elapsed+=dt;const view=getObjectView(monster),hasLine=lineOfSight(monster.x,monster.y);
+    const inView=view.distance<11&&Math.abs(view.angle)<FOV*.88&&hasLine,staring=view.distance<10&&Math.abs(view.angle)<.24&&hasLine;
+    if(staring){monster.gazeHold+=dt;health=Math.max(0,health-currentDifficulty.stareDamage*dt);}else monster.gazeHold=Math.max(0,monster.gazeHold-dt*1.6);
+    const targetCell=Math.floor(player.x)+','+Math.floor(player.y);monster.pathTimer-=dt;
+    if(!monster.waypoint||monster.pathTimer<=0||monster.waypointTarget!==targetCell){monster.waypoint=findMonsterWaypoint();monster.waypointTarget=targetCell;monster.pathTimer=.48;}
+    let tx=monster.waypoint.x,ty=monster.waypoint.y;if(Math.hypot(tx-monster.x,ty-monster.y)<.22){tx=player.x;ty=player.y;}
+    const dx=tx-monster.x,dy=ty-monster.y,dest=Math.max(.001,Math.hypot(dx,dy)),playerDistance=Math.hypot(player.x-monster.x,player.y-monster.y);
+    const speed=(inView?.10:(playerDistance>5?.94:.72))*currentDifficulty.monsterSpeed*(torchOn?1:1.12);
+    const mx=dx/dest*speed*dt,my=dy/dest*speed*dt;if(!isWall(monster.x+mx,monster.y)&&!isDoorBlocked(monster.x+mx,monster.y))monster.x+=mx;if(!isWall(monster.x,monster.y+my)&&!isDoorBlocked(monster.x,monster.y+my))monster.y+=my;
+    if(playerDistance<.85&&!monster.closeHit){health=Math.max(0,health-currentDifficulty.closeDamage);monster.closeHit=true;}
+    const moving=Math.abs(forward)+Math.abs(strafe)>.35,lookingAway=Math.abs(view.angle)>.55;
+    if(lookingAway&&moving&&playerDistance>3.4)monster.escapeTime+=dt;else monster.escapeTime=Math.max(0,monster.escapeTime-dt*.35);
+    if(monster.revealTime>0)monster.revealTime=Math.max(0,monster.revealTime-dt);
+    if((monster.escapeTime>4.2&&monster.revealTime<=0)||monster.elapsed>24||playerDistance<.5){monster=null;nextMonsterAt=elapsedSeconds+getMonsterInterval();}
+    if(health<=0)endRunByDeath();
   }
 
   function updateDoorAim(){const ray=castRay(player.angle);targetedDoor=null;let near=Infinity;for(const door of exitDoors){const v=getObjectView(door);if(v.distance<2.65&&Math.abs(v.angle)<.14&&ray.distance>=v.distance-.35&&v.distance<near){near=v.distance;targetedDoor=door;}}doorAimed=!!targetedDoor;if(doorAimed)doorPrompt.textContent=targetedDoor.fake?'UNKNOWN EXIT — CLICK OR PRESS E':'EXIT FOUND — CLICK OR PRESS E';doorPrompt.classList.toggle('visible',doorAimed&&!mobile);mobileInteract.textContent=doorAimed&&targetedDoor.fake?'CHECK DOOR':'INTERACT';mobileInteract.classList.toggle('visible',doorAimed&&mobile);}
@@ -942,8 +926,9 @@
     const previousX = player.x;
     const previousY = player.y;
     if (dx || dy) movePlayer(dx, dy);
-    const actualDistance = Math.hypot(player.x - previousX, player.y - previousY);
-    syncFootsteps(actualDistance > 0.0005, dt > 0 ? actualDistance / dt : 0);
+    const actualDistance=Math.hypot(player.x-previousX,player.y-previousY);
+    const playerMoving=actualDistance>.0005;gameScreen.classList.toggle('player-moving',playerMoving);
+    syncFootsteps(playerMoving,dt>0?actualDistance/dt:0);
     collectEchoes();
 
     if(currentDifficulty.monsters&&!monster&&elapsedSeconds>=nextMonsterAt)spawnMonster();updateMonster(dt,forward,strafe);updateImpossibleEffects(dt);
@@ -976,7 +961,7 @@
     endingCopy.style.animation = 'none';
     void endingCopy.offsetWidth;
     endingCopy.style.animation = 'endingReveal 12.4s ease forwards';
-    endingTimer = setTimeout(() => { stopAudioCue(overSound); returnHome(); }, 12600);
+    endingTimer=setTimeout(()=>{stopAudioCue(overSound);returnHome();},18000);
   }
 
   function endRunByDeath() {
@@ -988,24 +973,11 @@
     stopAllAudio();
     if (document.pointerLockElement) document.exitPointerLock();
     setScreen('dead');
-    deathTimer = setTimeout(() => returnHome(), 3600);
+    deathTimer=setTimeout(()=>returnHome(),9000);
   }
 
-  function pauseGame() {
-    if (!isPlaying || isPaused) return;
-    stopFootsteps();
-    isPaused = true;
-    setScreen('paused');
-    if (document.pointerLockElement) document.exitPointerLock();
-  }
-  function resumeGame() {
-    if (!isPlaying) return;
-    isPaused = false;
-    setScreen('game');
-    if (!mobile && canvas.requestPointerLock) {
-      try { canvas.requestPointerLock(); } catch (_) {}
-    }
-  }
+  function pauseGame(){if(!isPlaying||isPaused)return;stopFootsteps();resumeMusicAfterPause=!gameMusic.paused;gameMusic.pause();stopAudioCue(monsterSound);stopAudioCue(randomSound);isPaused=true;closeSettings();setScreen('paused');if(document.pointerLockElement)document.exitPointerLock();}
+  function resumeGame(){if(!isPlaying)return;isPaused=false;closeSettings();setScreen('game');if(resumeMusicAfterPause){const p=gameMusic.play();if(p&&typeof p.catch==='function')p.catch(()=>{});}resumeMusicAfterPause=false;if(!mobile&&canvas.requestPointerLock){try{canvas.requestPointerLock();}catch(_){}}}
 
   function render() {
     if (screen === 'game' || screen === 'paused' || screen === 'exitOptions') renderWorld();
@@ -1020,15 +992,11 @@
   requestAnimationFrame(loop);
 
   // Desktop controls: WASD movement, mouse look in both axes, E/click to interact.
-  window.addEventListener('keydown', event => {
-    keys[event.code] = true;
-    if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(event.code)) event.preventDefault();
-    if (event.code === 'KeyE' || event.code === 'Enter') {
-      if (doorAimed) interactWithDoor();
-    }
-    if (event.code === 'Escape' && isPlaying && !isPaused && !exitModal.classList.contains('visible')) {
-      pauseGame();
-    }
+  window.addEventListener('keydown',event=>{
+    keys[event.code]=true;if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(event.code))event.preventDefault();
+    if((event.code==='KeyE'||event.code==='Enter')&&!isPaused&&doorAimed)interactWithDoor();
+    if(event.code==='KeyL'&&!event.repeat&&isPlaying&&!isPaused&&screen==='game'){event.preventDefault();toggleTorch();}
+    if(event.code==='Escape'){if(settingsModal.classList.contains('visible'))closeSettings();else if(isPlaying&&isPaused&&screen==='paused')resumeGame();else if(isPlaying&&!isPaused&&!exitModal.classList.contains('visible'))pauseGame();}
   });
   window.addEventListener('keyup', event => { keys[event.code] = false; });
   window.addEventListener('blur', () => { Object.keys(keys).forEach(key => { keys[key] = false; }); stopFootsteps(); });
@@ -1049,8 +1017,8 @@
   });
   document.addEventListener('mousemove', event => {
     if (!pointerLocked || !isPlaying || isPaused) return;
-    player.angle += event.movementX * (MOUSE_LOOK_SENSITIVITY * 1.12);
-    player.pitch = Math.max(-.72, Math.min(.72, player.pitch - event.movementY * MOUSE_PITCH_SENSITIVITY));
+    player.angle+=event.movementX*(MOUSE_LOOK_SENSITIVITY*1.12*settings.lookSensitivity);
+    player.pitch=Math.max(-.72,Math.min(.72,player.pitch-event.movementY*MOUSE_PITCH_SENSITIVITY*settings.lookSensitivity));
   });
 
   // Mobile movement joystick.
@@ -1092,8 +1060,8 @@
     if (event.pointerId !== lookPointer) return;
     const dragX = Math.max(-100, Math.min(100, event.clientX - lastLookX));
     const dragY = Math.max(-100, Math.min(100, event.clientY - lastLookY));
-    player.angle += dragX * .0085;
-    player.pitch = Math.max(-.72, Math.min(.72, player.pitch - dragY * .0065));
+    player.angle+=dragX*.0085*settings.lookSensitivity;
+    player.pitch=Math.max(-.72,Math.min(.72,player.pitch-dragY*.0065*settings.lookSensitivity));
     lastLookX = event.clientX;
     lastLookY = event.clientY;
   });
@@ -1122,9 +1090,16 @@
   $('leaveButton').addEventListener('click', finishAtDoor);
   $('stayButton').addEventListener('click', () => { isPaused = false; setScreen('game'); if (!mobile && canvas.requestPointerLock) { try { canvas.requestPointerLock(); } catch (_) {} } });
   $('sacrificeButton').addEventListener('click', () => {}); // Reserved for a future chapter.
-  $('pauseButton').addEventListener('click', pauseGame);
-  $('resumeButton').addEventListener('click', resumeGame);
-  $('homeButton').addEventListener('click', () => { saveHistory('ABANDONED'); returnHome(); });
+  $('pauseButton').addEventListener('click',pauseGame);torchButton.addEventListener('click',toggleTorch);
+  $('resumeButton').addEventListener('click',resumeGame);$('pauseSettingsButton').addEventListener('click',openSettings);
+  $('closeSettingsButton').addEventListener('click',closeSettings);$('settingsBackButton').addEventListener('click',closeSettings);
+  $('homeButton').addEventListener('click',()=>{saveHistory('ABANDONED');returnHome();});
+  $('retryButton').addEventListener('click',()=>{saveHistory('ABANDONED');gameMusic.currentTime=0;startGame(currentDifficulty.id);});
+  $('deathRetryButton').addEventListener('click',()=>startGame(currentDifficulty.id));$('deathHomeButton').addEventListener('click',returnHome);
+  $('endingRetryButton').addEventListener('click',()=>{stopAudioCue(overSound);gameMusic.currentTime=0;startGame(currentDifficulty.id);});
+  $('endingHomeButton').addEventListener('click',()=>{stopAudioCue(overSound);returnHome();});
+  for(const key of ['masterVolume','musicVolume','effectsVolume','lookSensitivity'])$(key).addEventListener('input',event=>updateSetting(key,Number(event.target.value)));
+  $('graphicsQuality').addEventListener('change',event=>updateSetting('graphicsQuality',event.target.value));
 
   // Record an interrupted run if the player closes or refreshes the tab mid-game.
   window.addEventListener('pagehide', () => {
@@ -1134,5 +1109,5 @@
   // Attempt intro music on page load. Browsers may block autoplay until the first user gesture.
   startAudio(introMusic);
   document.addEventListener('pointerdown',()=>{if((screen==='home'||screen==='about')&&!levelSelect.classList.contains('visible')&&!loadingScreen.classList.contains('visible'))startAudio(introMusic);},{once:true});
-  renderHistory();
+  syncSettingsUI();applyAudioSettings();updateTorchPresentation();renderHistory();
 })();
